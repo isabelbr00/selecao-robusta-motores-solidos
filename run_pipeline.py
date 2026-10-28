@@ -92,6 +92,44 @@ def _json_seguro(obj):
     return obj
 
 
+NENHUM = "nenhum"
+
+
+def tabela_vencedores(resultado: pipeline.Result) -> pd.DataFrame:
+    """Vencedor de cada perfil: ANP (resultado principal) vs. pesos iguais (comparação).
+
+    ``vencedor_anp`` = argmax de g^(p) em F^(p); ``vencedor_pesos_iguais`` =
+    argmax de V^(p) em F^(p); ``divergem`` = "sim"/"não". As colunas
+    ``*_sem_restricoes`` repetem a comparação sem máscara (todos os designs).
+    F^(p) vazio dá ``"nenhum"``.
+    """
+
+    ids = resultado.design_ids
+
+    def nome(k: int | None):
+        return NENHUM if k is None else ids[k]
+
+    linhas = []
+    for s in resultado.cfg.siglas:
+        linha = {"estagio": resultado.cfg.estagio, "perfil": s}
+        for sufixo, com in (("", True), ("_sem_restricoes", False)):
+            anp_k = nome(resultado.vencedor_perfil(s, com_restricoes=com))
+            iguais_k = nome(resultado.vencedor_pesos_iguais(s, com_restricoes=com))
+            linha[f"vencedor_anp{sufixo}"] = anp_k
+            linha[f"vencedor_pesos_iguais{sufixo}"] = iguais_k
+            linha[f"divergem{sufixo}"] = "sim" if anp_k != iguais_k else "não"
+        linha["excluido_da_sintese"] = s in resultado.anp_resultado.perfis_excluidos
+        linhas.append(linha)
+    return pd.DataFrame(linhas)
+
+
+def tabela_pesos_efetivos(resultado: pipeline.Result) -> pd.DataFrame:
+    """q0 (a priori) e q = (1-γ)(I - γ W_TT)^{-1} q0 (efetivo), com a razão q/q0."""
+
+    q0, q = resultado.anp_resultado.q0, resultado.anp_resultado.q
+    return pd.DataFrame({"criterio": list(config.CRITERIOS), "q0": q0, "q": q, "q_sobre_q0": q / q0})
+
+
 def escolher_modelo(args: argparse.Namespace, designs: pd.DataFrame) -> scenarios.BallisticModel:
     if args.balistica is not None:
         logger.info("Balística reexecutada pelo simulador de %s", args.balistica)
@@ -180,24 +218,12 @@ def main(argv: list[str] | None = None) -> None:
     resumo_adm = admissibility.resumo(adm)
     resumo_adm.to_csv(out_dir / "admissibilidade_resumo.csv", index=False)
 
-    # ─── vencedores_por_perfil.csv (com e sem restrições) ───────────────
-    linhas_venc = []
-    for s in siglas:
-        sem = resultado.vencedor_perfil(s, com_restricoes=False)
-        com = resultado.vencedor_perfil(s, com_restricoes=True)
-        V = resultado.preference_vectors[s]
-        linhas_venc.append(
-            {
-                "perfil": s,
-                "vencedor_sem_restricoes": ids[sem],
-                "V_sem_restricoes": V[sem],
-                "vencedor_com_restricoes": None if com is None else ids[com],
-                "V_com_restricoes": None if com is None else V[com],
-                "excluido_da_sintese": s in resultado.anp_resultado.perfis_excluidos,
-            }
-        )
-    df_venc = pd.DataFrame(linhas_venc)
+    # ─── vencedores_por_perfil.csv (ANP vs. pesos iguais, com e sem restrições) ─
+    df_venc = tabela_vencedores(resultado)
     df_venc.to_csv(out_dir / "vencedores_por_perfil.csv", index=False)
+
+    # ─── pesos_efetivos.csv (efeito do ANP sobre os pesos dos critérios) ─
+    tabela_pesos_efetivos(resultado).to_csv(out_dir / "pesos_efetivos.csv", index=False)
 
     # ─── ranking_final.csv (top-50) ─────────────────────────────────────
     g_por_perfil = resultado.anp_resultado.g_por_perfil
@@ -270,9 +296,10 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Correlação c_k x pcmax(θ1): {adm.correlacao_custo_pressao:.3f}")
     if run_config["perfis_excluidos_da_sintese"]:
         print(f"Perfis excluídos da síntese (F vazio): {run_config['perfis_excluidos_da_sintese']}")
-    print("Vencedor por perfil (argmax V^(p)), sem -> com restrições:")
+    print("Vencedor por perfil (ANP: argmax g^(p) em F^(p)); entre parênteses, pesos iguais (argmax V^(p)):")
     for _, linha in df_venc.iterrows():
-        print(f"  {linha['perfil']}: {linha['vencedor_sem_restricoes']} -> {linha['vencedor_com_restricoes']}")
+        print(f"  {linha['perfil']}: {linha['vencedor_anp']} ({linha['vencedor_pesos_iguais']})"
+              f"  | sem restrições: {linha['vencedor_anp_sem_restricoes']} ({linha['vencedor_pesos_iguais_sem_restricoes']})")
     if not run_config["sens_lambda_executada"]:
         print("ATENÇÃO: varredura de λ pulada (sem modelo de balística que reexecute os estados; use --balistica).")
     print(f"CR do rascunho de julgamentos excede 0,10? {run_config['cr_excede_limite']}")

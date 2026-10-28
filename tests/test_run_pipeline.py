@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -35,6 +36,7 @@ def test_cli_ponta_a_ponta_dados_sinteticos(tmp_path, stage):
         "admissibilidade.csv",
         "admissibilidade_resumo.csv",
         "vencedores_por_perfil.csv",
+        "pesos_efetivos.csv",
         "run_config.json",
     ]
     for nome in esperados:
@@ -49,6 +51,18 @@ def test_cli_ponta_a_ponta_dados_sinteticos(tmp_path, stage):
     assert cfg["sens_lambda_executada"] is True  # modelo substituto reexecuta os estados
     assert set(cfg["tamanho_F"]) == {"W", "S", "H"}
     assert "d_star_inadmissivel_em" in cfg
+
+    venc = pd.read_csv(out_dir / "vencedores_por_perfil.csv")
+    assert list(venc.columns) == [
+        "estagio", "perfil",
+        "vencedor_anp", "vencedor_pesos_iguais", "divergem",
+        "vencedor_anp_sem_restricoes", "vencedor_pesos_iguais_sem_restricoes", "divergem_sem_restricoes",
+        "excluido_da_sintese",
+    ]
+    assert set(venc["divergem"]) <= {"sim", "não"}
+    pesos = pd.read_csv(out_dir / "pesos_efetivos.csv")
+    assert list(pesos.columns) == ["criterio", "q0", "q", "q_sobre_q0"]
+    assert pesos["q"].sum() == pytest.approx(1.0)
 
     with open(out_dir / "ranking_final.csv") as f:
         linhas = f.readlines()

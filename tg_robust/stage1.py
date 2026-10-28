@@ -7,7 +7,9 @@ diagnóstico, a normalização por estado (``per_state_minmax``), que demonstra
 que normalizar cada estado isoladamente elimina o efeito dos cenários;
 (iii) os três critérios de decisão sob incerteza — Wald, Savage e Hurwicz —
 aplicados sobre o tensor de payoff normalizado; e (iv) o vetor de preferência
-por perfil, com pesos iguais entre critérios.
+por perfil, com pesos iguais entre critérios — usado apenas como referência
+de comparação "sem interdependência" (como no AHP original); o vencedor de
+cada perfil vem da sub-rede ANP (``pipeline.Result.vencedor_perfil``).
 
 Nenhum peso de critério é usado neste estágio: a ponderação/interdependência
 entre critérios é tratada exclusivamente no Estágio 2 (``anp.py``).
@@ -179,14 +181,19 @@ def compute_profile_scores(
 
 
 def preference_vector(v: np.ndarray) -> np.ndarray:
-    """Vetor de preferência por perfil $V^{(p)}_k = \\tfrac{1}{R}\\sum_r v^{(p)}_{k,r}$."""
+    """Vetor de preferência por perfil $V^{(p)}_k = \\tfrac{1}{R}\\sum_r v^{(p)}_{k,r}$.
+
+    Pesos iguais, sem interdependência: saída de comparação, não define o
+    vencedor do perfil (que é o argmax de $g^{(p)}$ em $\\mathcal{F}^{(p)}$).
+    """
 
     return v.mean(axis=1)
 
 
 def preferred_design(V: np.ndarray, chi: np.ndarray | None = None) -> int | None:
-    """$d^{*(p)} = \\arg\\max_{d_k \\in \\mathcal{F}^{(p)}} V^{(p)}_k$ (Eq. "vetor_pref").
+    """$\\arg\\max_{d_k \\in \\mathcal{F}^{(p)}} V_k$ para um vetor de pontuações ``V``.
 
+    Usado com $g^{(p)}$ (vencedor do perfil) e com $V^{(p)}$ (comparação).
     ``chi`` é a máscara booleana de $\\mathcal{F}^{(p)}$; ``None`` = sem
     restrições (argmax sobre todos os designs). Devolve ``None`` se o
     conjunto admissível for vazio.

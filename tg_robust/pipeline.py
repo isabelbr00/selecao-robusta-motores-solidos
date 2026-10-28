@@ -11,6 +11,7 @@ sensibilidade.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -32,7 +33,7 @@ class Result:
     X_norm: np.ndarray  # payoff normalizado (min-max comum), shape (R, n, 3)
     atributos_por_estado: dict[str, dict[str, np.ndarray]]  # saída do modelo de balística
     scores: dict[str, np.ndarray]  # v^(p), shape (n, R) por perfil
-    preference_vectors: dict[str, np.ndarray]  # V^(p), shape (n,) por perfil
+    preference_vectors: dict[str, np.ndarray]  # V^(p) (pesos iguais; só comparação), shape (n,)
     admissibilidade: admissibility.Admissibilidade  # F^(p) por perfil (Seção 3.3.4)
     W_TT: np.ndarray
     julgamentos: list[J.ColumnJudgment]
@@ -61,10 +62,38 @@ class Result:
         return int(np.argmax(self.g))
 
     def vencedor_perfil(self, sigla: str, com_restricoes: bool = True) -> int | None:
-        """$d^{*(p)}$: argmax de $V^{(p)}$ sobre $\\mathcal{F}^{(p)}$ (ou sobre todos).
+        """Vencedor do perfil (resultado principal): argmax de $g^{(p)}$ sobre $\\mathcal{F}^{(p)}$.
 
-        Devolve a posição do design; ``None`` se ``com_restricoes`` e
-        $\\mathcal{F}^{(p)}$ for vazio.
+        $g^{(p)}$ é a prioridade da sub-rede ANP do perfil, a mesma que entra
+        na síntese de ``d*``. Devolve a posição do design; se
+        $\\mathcal{F}^{(p)}$ for vazio, devolve ``None`` ("nenhum") com aviso.
+        Com ``com_restricoes=False``, usa $g^{(p)}$ recalculado sem máscara
+        (:meth:`g_perfil_sem_restricoes`) e o argmax sobre todos os designs.
+        """
+
+        if not com_restricoes:
+            return stage1.preferred_design(self.g_perfil_sem_restricoes(sigla))
+        chi = self.admissibilidade.chi[sigla]
+        if not chi.any():
+            warnings.warn(
+                f"Conjunto admissível vazio para o perfil {sigla!r}: vencedor do perfil = nenhum.",
+                stacklevel=2,
+            )
+            return None
+        return stage1.preferred_design(self.anp_resultado.g_por_perfil[sigla], chi)
+
+    def g_perfil_sem_restricoes(self, sigla: str) -> np.ndarray:
+        """$g^{(p)}$ da sub-rede do perfil com $W^{(p)}_{AT}$ sem máscara (todos os designs)."""
+
+        W_AT = anp.build_W_AT(self.scores[sigla])
+        return anp.profile_limit_closed(W_AT, self.W_TT, self.cfg.gamma_anp, self.anp_resultado.q0)[0]
+
+    def vencedor_pesos_iguais(self, sigla: str, com_restricoes: bool = True) -> int | None:
+        """Referência de comparação: argmax de $V^{(p)}$ (pesos iguais, sem interdependência).
+
+        Equivale à agregação do AHP original de pesos iguais; não define o
+        vencedor do perfil (ver :meth:`vencedor_perfil`). ``None`` se
+        ``com_restricoes`` e $\\mathcal{F}^{(p)}$ for vazio.
         """
 
         chi = self.admissibilidade.chi[sigla] if com_restricoes else None

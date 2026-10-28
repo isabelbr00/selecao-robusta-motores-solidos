@@ -50,14 +50,15 @@ explicitamente marcados como tal (aviso no terminal, coluna `sintetico` e
 
 | Arquivo | Conteúdo |
 |---|---|
-| `scores_W.csv`, `scores_S.csv`, `scores_H.csv` | Pontuações $v^{(p)}_{k,r}$ por critério e preferência $V^{(p)}$, por perfil |
+| `scores_W.csv`, `scores_S.csv`, `scores_H.csv` | Pontuações $v^{(p)}_{k,r}$ por critério e, para comparação, $V^{(p)}$ (pesos iguais), por perfil |
 | `ranking_final.csv` | Top-50 por $g$, com $g, g_W, g_S, g_H, V_W, V_S, V_H$ e rank do baseline AHP |
 | `criterion_weights.csv` | $q_0$ (a priori) vs. $q$ (efetivo, pós-dependência interna) |
 | `consistency.csv` | CR por coluna de julgamento de $W_{TT}$ |
 | `sens_alpha.csv`, `sens_pi.csv`, `sens_anp.csv`, `sens_lambda.csv`, `sens_restricoes.csv` | As 5 varreduras de sensibilidade (`sens_lambda.csv` fica vazio se não houver modelo de balística que reexecute os estados) |
 | `admissibilidade.csv` | Por design: `pcmax` em θ1 e máximo entre estados, base e índice de custo $c_k$, e as máscaras de pressão, custo e $\mathcal{F}^{(p)}$ |
 | `admissibilidade_resumo.csv` | Tamanho de $\mathcal{F}^{(p)}$, exclusões só por pressão / só por custo / por ambos, e a interseção |
-| `vencedores_por_perfil.csv` | argmax de $V^{(p)}$ com e sem restrições |
+| `vencedores_por_perfil.csv` | Por perfil: `vencedor_anp` (argmax de $g^{(p)}$ em $\mathcal{F}^{(p)}$, resultado principal), `vencedor_pesos_iguais` (argmax de $V^{(p)}$ em $\mathcal{F}^{(p)}$, comparação), `divergem`, e as mesmas três colunas sem restrições; "nenhum" se $\mathcal{F}^{(p)}$ for vazio |
+| `pesos_efetivos.csv` | $q_0$, $q = (1-\gamma)(I - \gamma W_{TT})^{-1} q_0$ e a razão $q/q_0$ |
 | `run_config.json` | Configuração completa (perfis, parâmetros globais), semente, modelo de balística, correlação $c_k \times p_{c,\max}(\theta_1)$, perfis em que $d^*$ é inadmissível, hash SHA-256 do CSV |
 
 ## Restrições de admissibilidade por perfil (Seção 3.3.4)
@@ -66,8 +67,13 @@ Cada perfil é um `config.Perfil` (regra de decisão, α, FS, teto de custo ρ,
 peso π); os parâmetros globais ficam em `config.ConfigGlobal` (p_lim = 16 MPa,
 expoente `b` da CER — **1,0 provisório**, com aviso —, referência do custo
 `mediana`/`minimo`). O pipeline e a sensibilidade tratam qualquer lista de
-perfis da mesma forma. As restrições atuam só no argmax de $V^{(p)}$ e no
-bloco $W_{AT}^{(p)}$; `rho = inf` retira o teto de custo.
+perfis da mesma forma. As restrições atuam só no bloco $W_{AT}^{(p)}$ e na
+escolha do vencedor de cada perfil; `rho = inf` retira o teto de custo.
+
+O **vencedor de cada perfil** é o argmax de $g^{(p)}$ (sub-rede ANP do perfil,
+a mesma que entra na síntese de $d^*$) restrito a $\mathcal{F}^{(p)}$.
+$V^{(p)}$ (média simples dos 7 critérios, pesos iguais) é mantido só como
+referência "sem interdependência", como no AHP original.
 
 ## Onde plugar os dados reais
 

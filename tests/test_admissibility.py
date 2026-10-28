@@ -391,3 +391,60 @@ def test_estados_precomputados_recusa_kappa_fora_da_referencia():
     designs = pd.DataFrame({c: [1.0] for c in config.CRITERIOS_INVARIANTES})
     with pytest.raises(ValueError, match="reexecutar"):
         scenarios.EstadosPrecomputados()(designs, kc=0.95, kcf=0.9)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Vencedor de cada perfil vem do ANP: argmax de g^(p) em F^(p)
+# ─────────────────────────────────────────────────────────────────────────
+def _argmax_restrito(score, chi):
+    idx = np.flatnonzero(chi)
+    return int(idx[np.argmax(score[idx])])
+
+
+def test_vencedor_do_perfil_e_argmax_de_g_em_F(resultados_pipeline):
+    ref, _, _ = resultados_pipeline
+    for s in ref.cfg.siglas:
+        chi = ref.admissibilidade.chi[s]
+        k = ref.vencedor_perfil(s)
+        assert chi[k]
+        assert k == _argmax_restrito(ref.anp_resultado.g_por_perfil[s], chi)
+        # comparação de pesos iguais continua disponível e também respeita F^(p)
+        k_iguais = ref.vencedor_pesos_iguais(s)
+        assert chi[k_iguais] and k_iguais == _argmax_restrito(ref.preference_vectors[s], chi)
+
+
+def test_vencedor_sem_restricoes_e_argmax_de_g_sem_mascara(resultados_pipeline):
+    ref, sem, _ = resultados_pipeline
+    for s in ref.cfg.siglas:
+        g_livre = ref.g_perfil_sem_restricoes(s)
+        np.testing.assert_allclose(g_livre.sum(), 1.0)
+        assert ref.vencedor_perfil(s, com_restricoes=False) == int(np.argmax(g_livre))
+        # sem restrições e sem perfis inadmissíveis: igual ao pipeline com FS = 1, rho = inf
+        np.testing.assert_array_equal(g_livre, sem.anp_resultado.g_por_perfil[s])
+
+
+@requer_gerador
+def test_vencedor_do_perfil_no_gabarito(pipelines_sintetico):
+    ref = pipelines_sintetico["referencia"]
+    for s in "WSH":
+        chi = ref.admissibilidade.chi[s]
+        k = ref.vencedor_perfil(s)
+        assert chi[k] and k == _argmax_restrito(ref.anp_resultado.g_por_perfil[s], chi)
+
+
+@requer_gerador
+def test_F_vazio_vencedor_nenhum_e_tabela_nao_quebra(pipelines_sintetico):
+    import run_pipeline
+
+    res = pipelines_sintetico["W_vazio"]
+    with pytest.warns(UserWarning, match="nenhum"):
+        assert res.vencedor_perfil("W") is None
+    assert res.vencedor_pesos_iguais("W") is None
+    tabela = run_pipeline.tabela_vencedores(res).set_index("perfil")
+    assert tabela.loc["W", "vencedor_anp"] == "nenhum"
+    assert tabela.loc["W", "vencedor_pesos_iguais"] == "nenhum"
+    assert tabela.loc["W", "divergem"] == "não"
+    assert bool(tabela.loc["W", "excluido_da_sintese"])
+    assert tabela.loc["W", "vencedor_anp_sem_restricoes"] != "nenhum"
+    for s in "SH":
+        assert tabela.loc[s, "vencedor_anp"] == res.design_ids[res.vencedor_perfil(s)]
