@@ -88,7 +88,7 @@ JUSTIFICATIVAS: Mapping[tuple[str, str], str] = {
     ("F", "It"): "F = I_t/t_b: mais impulso no mesmo tempo eleva o empuxo médio.",
     ("F", "tb"): "F = I_t/t_b: queima mais curta com o mesmo impulso eleva o empuxo médio.",
     ("F", "rhoIsp"): "F = ṁ·I_{sp}: maior I_{sp} dá mais empuxo à mesma vazão mássica.",
-    ("rhoIsp", "pcmax"): "C_F (e com ele I_{sp}) cresce com p_c para razão de expansão fixa.",
+    ("rhoIsp", "pcmax"): "Com pressão ambiente, C_F cresce com p_c pelo termo (p_e − p_{ext})·ε/p_c; no vácuo, a dependência é fraca.",
     ("pcmax", "F"): "F = C_F·p_c·A_t: com a tubeira fixa, exigir mais empuxo exige mais pressão.",
     ("pcmax", "tb"): "r = a·p_c^n: queimar a mesma web em menos tempo exige pressão maior.",
     ("pcmax", "rhoIsp"): "p_c = (ρ_p c^* a·A_b/A_t)^{1/(1−n)}: ρ_p e c^* entram diretamente na pressão de equilíbrio.",
