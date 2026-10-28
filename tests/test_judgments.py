@@ -22,11 +22,38 @@ def test_from_intensities_reciprocidade():
             assert j.A[i, k] == pytest.approx(1.0 / j.A[k, i])
 
 
-def test_from_intensities_valores_na_escala():
-    j = J.from_intensities("Mp", {"It": 9, "rhoIsp": 5, "tb": 3, "eta": 3})
-    for i in range(len(j.labels)):
-        for k in range(len(j.labels)):
-            assert j.A[i, k] in J.SAATY_SCALE
+def test_from_intensities_razoes_exatas_sem_arredondar():
+    intens = {"It": 9, "rhoIsp": 7, "tb": 5, "eta": 3}
+    j = J.from_intensities("Mp", intens)
+    s = np.array([intens[l] for l in j.labels], dtype=float)
+    np.testing.assert_allclose(j.A, s[:, None] / s[None, :])
+    assert j.A[0, 1] == pytest.approx(9 / 7)  # antes arredondado para 1
+
+
+def test_from_intensities_prioridades_sao_intensidades_normalizadas_e_RC_zero():
+    intens = {"It": 9, "rhoIsp": 7, "F": 5, "tb": 5}
+    j = J.from_intensities("It", intens)
+    w, lam = J.eigen_priorities(j.A)
+    s = np.array([intens[l] for l in j.labels], dtype=float)
+    np.testing.assert_allclose(w, s / s.sum(), atol=1e-12)
+    _, _, CR = J.consistency(j.A)
+    assert abs(CR) < 1e-12
+    assert lam == pytest.approx(len(intens))
+
+
+def test_from_intensities_um_unico_influenciador():
+    j = J.from_intensities("eta", {"Mp": 7})
+    w, _ = J.eigen_priorities(j.A)
+    assert w == pytest.approx([1.0])
+    assert J.consistency(j.A)[2] == 0.0
+
+
+def test_perturb_valor_entre_niveis_vai_ao_nivel_vizinho():
+    por_alvo = {"X": J.from_intensities("X", {"a": 9, "b": 5})}  # A_ab = 1,8
+    acima = J.perturb(por_alvo, "X", "a", "b", step=1)["X"].A
+    abaixo = J.perturb(por_alvo, "X", "a", "b", step=-1)["X"].A
+    assert acima[0, 1] == pytest.approx(2.0) and acima[1, 0] == pytest.approx(0.5)
+    assert abaixo[0, 1] == pytest.approx(1.0)
 
 
 def test_build_WTT_placeholder_emite_aviso_e_retorna_estocastica_por_coluna():

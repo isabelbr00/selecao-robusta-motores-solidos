@@ -21,9 +21,41 @@ sys.path.insert(0, raiz)
 warnings.simplefilter("ignore")
 
 from tg_robust import config, pipeline, sensitivity  # noqa: E402
+from tg_robust import judgments as J  # noqa: E402
 from tg_robust.scenarios import SurrogateBallistics  # noqa: E402
 
 KAPPAS = list(zip((1.0, 0.99, 0.98), (1.0, 0.965, 0.93)))
+
+# W_TT congelada (rascunho original, razões arredondadas à Escala de Saaty),
+# imposta às DUAS versões: a regressão verifica só a camada de restrições, não
+# as mudanças posteriores nos julgamentos de W_TT.
+INFLUENCIAS_REGRESSAO = {
+    "Mp": {"It": 9, "rhoIsp": 5, "tb": 3, "eta": 3},
+    "tb": {"pcmax": 5, "F": 5, "It": 3, "Mp": 3},
+    "It": {"Mp": 9, "rhoIsp": 7, "F": 5, "tb": 5},
+    "F": {"pcmax": 9, "It": 5, "tb": 5, "rhoIsp": 3},
+    "rhoIsp": {"pcmax": 5, "F": 3},
+    "pcmax": {"F": 9, "tb": 3, "rhoIsp": 3, "eta": 3},
+    "eta": {"Mp": 7, "pcmax": 3, "It": 3},
+}
+
+
+def wtt_congelada(criterios=config.CRITERIOS):
+    julgamentos = []
+    for alvo in criterios:
+        intens = INFLUENCIAS_REGRESSAO[alvo]
+        labels = tuple(intens)
+        A = np.ones((len(labels), len(labels)))
+        for i, li in enumerate(labels):
+            for k, lk in enumerate(labels):
+                if i < k:
+                    A[i, k] = J.snap_to_saaty_scale(intens[li] / intens[lk])
+                    A[k, i] = 1.0 / A[i, k]
+        julgamentos.append(J.ColumnJudgment(target=alvo, labels=labels, A=A))
+    return J.WTT_de_julgamentos(J.julgamentos_por_alvo(julgamentos), criterios), julgamentos
+
+
+J.build_WTT_placeholder = wtt_congelada
 
 
 class EstadosDasColunas:

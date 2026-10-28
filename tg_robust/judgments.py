@@ -5,10 +5,11 @@ são comparados paritariamente na Escala Fundamental de Saaty. Este módulo
 fornece:
 
 * a Escala de Saaty e uma função de ajuste (*snap*) de uma razão arbitrária
-  para o valor mais próximo da escala (em log);
+  para o valor mais próximo da escala (em log), usada só na perturbação;
 * :func:`from_intensities`, que monta a matriz de comparação paritária
   reciproca $A_r$ a partir de intensidades de influência absolutas
-  (um número por critério influenciador, não uma razão par-a-par direta);
+  (um número por critério influenciador), com as razões $I_i/I_j$ exatas —
+  as prioridades resultantes são as intensidades normalizadas e a RC é 0;
 * o cálculo de prioridades (autovetor principal), $\\lambda_{max}$, CI e CR;
 * :func:`build_WTT_placeholder`, que monta a matriz $W_{TT}$ 7x7 a partir do
   rascunho provisório de intensidades fornecido na especificação da TG —
@@ -81,22 +82,18 @@ def from_intensities(target: str, intensities: Mapping[str, float]) -> ColumnJud
     """Monta a matriz de comparação paritária reciproca $A$ de uma coluna.
 
     ``intensities`` associa, a cada critério influenciador do ``target``,
-    uma intensidade absoluta de influência (não uma razão par-a-par). A
-    razão $s_i/s_j$ entre cada par de influenciadores é ajustada ao valor
-    mais próximo da Escala de Saaty (:func:`snap_to_saaty_scale`); a
-    reciprocidade é garantida por construção (``A[j,i] = 1/A[i,j]``).
+    uma intensidade absoluta de influência na Escala de Saaty (1 a 9). Cada
+    elemento é a razão exata $A_{ij} = I_i/I_j$, **sem** arredondar para a
+    escala: arredondar comprimia os julgamentos (p.ex. 9/7 ≈ 1,3 virava 1).
+    A matriz é recíproca e perfeitamente consistente por construção, logo
+    o autovetor principal é o vetor de intensidades normalizado e a RC é 0.
     """
 
     labels = tuple(intensities.keys())
-    n = len(labels)
     s = np.array([intensities[l] for l in labels], dtype=float)
-
-    A = np.ones((n, n), dtype=float)
-    for i in range(n):
-        for j in range(i + 1, n):
-            valor = snap_to_saaty_scale(s[i] / s[j])
-            A[i, j] = valor
-            A[j, i] = 1.0 / valor
+    if not (s > 0).all():
+        raise ValueError(f"Intensidades devem ser positivas (alvo {target!r})")
+    A = s[:, None] / s[None, :]
 
     return ColumnJudgment(target=target, labels=labels, A=A)
 
@@ -215,7 +212,11 @@ def perturb(
 
     Desloca o valor $A_{ab}$ em ``step`` níveis da Escala de Saaty
     (:data:`SAATY_SCALE`), preservando a reciprocidade ($A_{ba} = 1/A_{ab}$)
-    e mantendo o valor dentro dos limites da escala. Não modifica
+    e mantendo o valor dentro dos limites da escala. Como as razões não são
+    arredondadas (:func:`from_intensities`), $A_{ab}$ pode estar entre dois
+    níveis: ``step=+1`` leva ao primeiro nível acima do valor atual e
+    ``step=-1`` ao primeiro abaixo (para valores já na escala, é o nível
+    vizinho, como antes). Não modifica
     ``julgamentos`` — devolve um dicionário novo com a coluna ``col``
     substituída.
 
@@ -234,8 +235,15 @@ def perturb(
     A_novo = julgamento.A.copy()
 
     valor_atual = A_novo[i, k]
-    pos_atual = SAATY_SCALE.index(snap_to_saaty_scale(valor_atual))
-    pos_novo = int(np.clip(pos_atual + step, 0, len(SAATY_SCALE) - 1))
+    escala = np.asarray(SAATY_SCALE)
+    no_nivel = np.flatnonzero(np.isclose(escala, valor_atual, rtol=1e-9, atol=0.0))
+    if no_nivel.size:
+        pos_base = int(no_nivel[0])
+    elif step > 0:
+        pos_base = int(np.searchsorted(escala, valor_atual)) - 1  # maior nível abaixo do valor
+    else:
+        pos_base = int(np.searchsorted(escala, valor_atual))  # menor nível acima do valor
+    pos_novo = int(np.clip(pos_base + step, 0, len(SAATY_SCALE) - 1))
     valor_novo = SAATY_SCALE[pos_novo]
 
     A_novo[i, k] = valor_novo
