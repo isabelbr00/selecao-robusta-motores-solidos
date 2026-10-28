@@ -240,11 +240,6 @@ def main(argv: list[str] | None = None) -> None:
     ranking.insert(0, "rank_integrado", np.arange(1, len(ranking) + 1))
     ranking.head(50).to_csv(out_dir / "ranking_final.csv", index=False)
 
-    # ─── criterion_weights.csv ──────────────────────────────────────────
-    pd.DataFrame(
-        {"criterio": list(config.CRITERIOS), "q0": resultado.anp_resultado.q0, "q_efetivo": resultado.anp_resultado.q}
-    ).to_csv(out_dir / "criterion_weights.csv", index=False)
-
     # ─── consistency.csv ────────────────────────────────────────────────
     resultado.consistency_df.to_csv(out_dir / "consistency.csv", index=False)
 

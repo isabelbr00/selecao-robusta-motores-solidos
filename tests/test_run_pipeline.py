@@ -26,7 +26,6 @@ def test_cli_ponta_a_ponta_dados_sinteticos(tmp_path, stage):
         "scores_S.csv",
         "scores_H.csv",
         "ranking_final.csv",
-        "criterion_weights.csv",
         "consistency.csv",
         "sens_alpha.csv",
         "sens_pi.csv",
