@@ -72,7 +72,7 @@ PLACEHOLDER_INFLUENCIAS: Mapping[str, Mapping[str, float]] = {
 # em uma frase. Notação: subscritos e sobrescritos como em LaTeX (M_p, p_{c,max},
 # p_c^n), para uso direto em relatórios. Propostas para revisão do orientador.
 JUSTIFICATIVAS: Mapping[tuple[str, str], str] = {
-    ("Mp", "It"): "I_t = M_p·I_{sp}·g_0: para um I_{sp} dado, o impulso exigido fixa a massa de propelente.",
+    ("Mp", "It"): "I_t = M_p·I_{sp} (I_{sp} em m/s): para um I_{sp} dado, o impulso exigido fixa a massa de propelente.",
     ("Mp", "rhoIsp"): "ρ_p define quanta massa cabe na câmara (M_p = ρ_p η_v V_c) e I_{sp}, quanta massa é preciso para um dado I_t.",
     ("Mp", "tb"): "M_p = ṁ·t_b: com a vazão limitada pela área de queima, queima mais longa exige mais propelente.",
     ("Mp", "eta"): "M_p = ρ_p η_v V_c: no mesmo envelope, η_v fixa a fração ocupada por propelente.",
@@ -80,8 +80,8 @@ JUSTIFICATIVAS: Mapping[tuple[str, str], str] = {
     ("tb", "F"): "t_b = I_t/F: para impulso fixo, empuxo médio maior implica queima mais curta.",
     ("tb", "It"): "t_b = I_t/F: para empuxo fixo, mais impulso exige queima mais longa.",
     ("tb", "Mp"): "t_b = M_p/ṁ: mais propelente queimando à mesma vazão alonga a queima.",
-    ("It", "Mp"): "I_t = M_p·I_{sp}·g_0: impulso total proporcional à massa de propelente.",
-    ("It", "rhoIsp"): "O I_{sp} multiplica a massa em I_t = M_p I_{sp} g_0; a densidade só atua via M_p.",
+    ("It", "Mp"): "I_t = M_p·I_{sp} (I_{sp} em m/s): impulso total proporcional à massa de propelente.",
+    ("It", "rhoIsp"): "O I_{sp} (em m/s) multiplica a massa em I_t = M_p·I_{sp}; a densidade só atua via M_p.",
     ("It", "F"): "I_t = F·t_b (identidade com o empuxo médio).",
     ("It", "tb"): "I_t = F·t_b (identidade com o tempo de queima).",
     ("F", "pcmax"): "F = C_F·p_c·A_t: para tubeira fixa, empuxo proporcional à pressão de câmara (representada por p_{c,max}).",
