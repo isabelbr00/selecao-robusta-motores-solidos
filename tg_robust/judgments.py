@@ -64,8 +64,41 @@ PLACEHOLDER_INFLUENCIAS: Mapping[str, Mapping[str, float]] = {
     "It": {"Mp": 7, "rhoIsp": 7, "F": 5, "tb": 5},
     "F": {"pcmax": 9, "It": 5, "tb": 5, "rhoIsp": 3},
     "rhoIsp": {"pcmax": 5},
-    "pcmax": {"F": 9, "tb": 3, "rhoIsp": 3, "eta": 3},
+    "pcmax": {"F": 9, "tb": 3, "rhoIsp": 3, "eta": 3},  # eta: A CONFIRMAR (ver RELACOES_A_CONFIRMAR)
     "eta": {"Mp": 7},
+}
+
+# Justificativa física de cada relação (critério influenciado, influenciador),
+# em uma frase. Notação: subscritos e sobrescritos como em LaTeX (M_p, p_{c,max},
+# p_c^n), para uso direto em relatórios. Propostas para revisão do orientador.
+JUSTIFICATIVAS: Mapping[tuple[str, str], str] = {
+    ("Mp", "It"): "I_t = M_p·I_{sp}·g_0: para um I_{sp} dado, o impulso exigido fixa a massa de propelente.",
+    ("Mp", "rhoIsp"): "ρ_p define quanta massa cabe na câmara (M_p = ρ_p η_v V_c) e I_{sp}, quanta massa é preciso para um dado I_t.",
+    ("Mp", "tb"): "M_p = ṁ·t_b: com a vazão limitada pela área de queima, queima mais longa exige mais propelente.",
+    ("Mp", "eta"): "M_p = ρ_p η_v V_c: no mesmo envelope, η_v fixa a fração ocupada por propelente.",
+    ("tb", "pcmax"): "r = a·p_c^n: pressão maior acelera a regressão e encurta a queima da mesma espessura de web.",
+    ("tb", "F"): "t_b = I_t/F: para impulso fixo, empuxo médio maior implica queima mais curta.",
+    ("tb", "It"): "t_b = I_t/F: para empuxo fixo, mais impulso exige queima mais longa.",
+    ("tb", "Mp"): "t_b = M_p/ṁ: mais propelente queimando à mesma vazão alonga a queima.",
+    ("It", "Mp"): "I_t = M_p·I_{sp}·g_0: impulso total proporcional à massa de propelente.",
+    ("It", "rhoIsp"): "O I_{sp} multiplica a massa em I_t = M_p I_{sp} g_0; a densidade só atua via M_p.",
+    ("It", "F"): "I_t = F·t_b (identidade com o empuxo médio).",
+    ("It", "tb"): "I_t = F·t_b (identidade com o tempo de queima).",
+    ("F", "pcmax"): "F = C_F·p_c·A_t: para tubeira fixa, empuxo proporcional à pressão de câmara.",
+    ("F", "It"): "F = I_t/t_b: mais impulso no mesmo tempo eleva o empuxo médio.",
+    ("F", "tb"): "F = I_t/t_b: queima mais curta com o mesmo impulso eleva o empuxo médio.",
+    ("F", "rhoIsp"): "F = ṁ·I_{sp}: maior I_{sp} dá mais empuxo à mesma vazão mássica.",
+    ("rhoIsp", "pcmax"): "C_F (e com ele I_{sp}) cresce com p_c para razão de expansão fixa.",
+    ("pcmax", "F"): "F = C_F·p_c·A_t: com a tubeira fixa, exigir mais empuxo exige mais pressão.",
+    ("pcmax", "tb"): "r = a·p_c^n: queimar a mesma web em menos tempo exige pressão maior.",
+    ("pcmax", "rhoIsp"): "p_c = (ρ_p c^* a·A_b/A_t)^{1/(1−n)}: ρ_p e c^* entram diretamente na pressão de equilíbrio.",
+    ("pcmax", "eta"): "Carregamento maior tende a elevar a razão A_b/A_t (K_n) e, com ela, a pressão.",
+    ("eta", "Mp"): "η_v = M_p/(ρ_p V_c): no envelope dado, é a própria fração de propelente.",
+}
+
+# Relações mantidas, mas pendentes de confirmação, com o motivo.
+RELACOES_A_CONFIRMAR: Mapping[tuple[str, str], str] = {
+    ("pcmax", "eta"): "a confirmar com o orientador (depende de o modelo representar queima erosiva)",
 }
 
 
@@ -283,6 +316,8 @@ __all__ = [
     "SAATY_SCALE",
     "snap_to_saaty_scale",
     "PLACEHOLDER_INFLUENCIAS",
+    "JUSTIFICATIVAS",
+    "RELACOES_A_CONFIRMAR",
     "ColumnJudgment",
     "from_intensities",
     "eigen_priorities",

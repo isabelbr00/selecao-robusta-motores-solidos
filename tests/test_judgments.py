@@ -115,3 +115,15 @@ def test_WTT_de_julgamentos_reconstroi_matriz_original():
     por_alvo = J.julgamentos_por_alvo(juls)
     W_TT_reconstruida = J.WTT_de_julgamentos(por_alvo)
     assert np.allclose(W_TT, W_TT_reconstruida)
+
+
+def test_toda_relacao_de_WTT_tem_justificativa_e_vice_versa():
+    relacoes = {(alvo, infl) for alvo, d in J.PLACEHOLDER_INFLUENCIAS.items() for infl in d}
+    assert set(J.JUSTIFICATIVAS) == relacoes
+    assert all(J.JUSTIFICATIVAS[r].strip() for r in relacoes)
+    assert set(J.RELACOES_A_CONFIRMAR) <= relacoes
+
+
+def test_eta_para_pcmax_mantida_e_marcada_a_confirmar():
+    assert "eta" in J.PLACEHOLDER_INFLUENCIAS["pcmax"]
+    assert "queima erosiva" in J.RELACOES_A_CONFIRMAR[("pcmax", "eta")]
