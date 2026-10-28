@@ -63,9 +63,9 @@ PLACEHOLDER_INFLUENCIAS: Mapping[str, Mapping[str, float]] = {
     "tb": {"pcmax": 5, "F": 5, "It": 3, "Mp": 3},
     "It": {"Mp": 9, "rhoIsp": 7, "F": 5, "tb": 5},
     "F": {"pcmax": 9, "It": 5, "tb": 5, "rhoIsp": 3},
-    "rhoIsp": {"pcmax": 5, "F": 3},
+    "rhoIsp": {"pcmax": 5},
     "pcmax": {"F": 9, "tb": 3, "rhoIsp": 3, "eta": 3},
-    "eta": {"Mp": 7, "pcmax": 3, "It": 3},
+    "eta": {"Mp": 7},
 }
 
 
