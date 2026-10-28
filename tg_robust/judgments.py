@@ -59,9 +59,9 @@ def snap_to_saaty_scale(x: float) -> float:
 # Escala de Saaty. AINDA NÃO VALIDADO pelo autor/orientador — ver aviso em
 # build_WTT_placeholder().
 PLACEHOLDER_INFLUENCIAS: Mapping[str, Mapping[str, float]] = {
-    "Mp": {"It": 9, "rhoIsp": 5, "tb": 3, "eta": 3},
+    "Mp": {"It": 9, "rhoIsp": 5, "tb": 3, "eta": 5},
     "tb": {"pcmax": 5, "F": 5, "It": 3, "Mp": 3},
-    "It": {"Mp": 9, "rhoIsp": 7, "F": 5, "tb": 5},
+    "It": {"Mp": 7, "rhoIsp": 7, "F": 5, "tb": 5},
     "F": {"pcmax": 9, "It": 5, "tb": 5, "rhoIsp": 3},
     "rhoIsp": {"pcmax": 5},
     "pcmax": {"F": 9, "tb": 3, "rhoIsp": 3, "eta": 3},
