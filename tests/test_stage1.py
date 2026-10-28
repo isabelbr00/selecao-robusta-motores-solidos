@@ -77,7 +77,7 @@ def test_common_minmax_zeros_quando_constante():
 
 def test_scores_em_0_1(tensor):
     Xn = stage1.common_minmax(tensor)
-    scores = stage1.compute_profile_scores(Xn, alpha=0.8)
+    scores = stage1.compute_profile_scores(Xn, config.PERFIS_REFERENCIA)
     for v in scores.values():
         assert (v >= -1e-12).all() and (v <= 1 + 1e-12).all()
 

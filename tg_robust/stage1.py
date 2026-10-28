@@ -15,6 +15,8 @@ entre critérios é tratada exclusivamente no Estágio 2 (``anp.py``).
 
 from __future__ import annotations
 
+from typing import Callable, Sequence
+
 import numpy as np
 import pandas as pd
 
@@ -157,18 +159,23 @@ def hurwicz(X_norm: np.ndarray, alpha: float) -> np.ndarray:
     return (alpha * maximo + (1.0 - alpha) * minimo).T
 
 
-def compute_profile_scores(X_norm: np.ndarray, alpha: float) -> dict[str, np.ndarray]:
-    """Calcula as pontuações ``v^(p)`` dos três perfis (W, S, H).
+# Regra de decisão de cada perfil: (X_norm, perfil) -> v, shape (n, R)
+REGRAS: dict[str, Callable[[np.ndarray, config.Perfil], np.ndarray]] = {
+    "wald": lambda X_norm, perfil: wald(X_norm),
+    "savage": lambda X_norm, perfil: savage(X_norm),
+    "hurwicz": lambda X_norm, perfil: hurwicz(X_norm, perfil.alpha),
+}
 
-    Retorna ``{"W": v_wald, "S": v_savage, "H": v_hurwicz}``, cada um com
-    shape ``(n, R)``.
+
+def compute_profile_scores(
+    X_norm: np.ndarray, perfis: Sequence[config.Perfil]
+) -> dict[str, np.ndarray]:
+    """Calcula as pontuações ``v^(p)`` de cada perfil da lista, pela sua regra.
+
+    Retorna ``{sigla: v}``, cada ``v`` com shape ``(n, R)``.
     """
 
-    return {
-        "W": wald(X_norm),
-        "S": savage(X_norm),
-        "H": hurwicz(X_norm, alpha),
-    }
+    return {perfil.sigla: REGRAS[perfil.regra](X_norm, perfil) for perfil in perfis}
 
 
 def preference_vector(v: np.ndarray) -> np.ndarray:
@@ -200,6 +207,7 @@ __all__ = [
     "wald",
     "savage",
     "hurwicz",
+    "REGRAS",
     "compute_profile_scores",
     "preference_vector",
     "preferred_design",

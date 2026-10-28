@@ -38,6 +38,15 @@ class Result:
     julgamentos: list[J.ColumnJudgment]
     consistency_df: pd.DataFrame
     anp_resultado: anp.ResultadoANP
+    modelo_balistico: BallisticModel  # usado para os estados; reaproveitado na varredura de lambda
+
+    @property
+    def design_ids(self) -> np.ndarray:
+        """Identificadores dos designs (coluna ``design_id`` se existir, senão a posição)."""
+
+        if "design_id" in self.designs.columns:
+            return self.designs["design_id"].to_numpy()
+        return self.designs.index.to_numpy()
 
     @property
     def g(self) -> np.ndarray:
@@ -51,14 +60,15 @@ class Result:
 
         return int(np.argmax(self.g))
 
-    def vencedor_perfil(self, perfil: str, com_restricoes: bool = True) -> int | None:
+    def vencedor_perfil(self, sigla: str, com_restricoes: bool = True) -> int | None:
         """$d^{*(p)}$: argmax de $V^{(p)}$ sobre $\\mathcal{F}^{(p)}$ (ou sobre todos).
 
-        ``None`` se ``com_restricoes`` e $\\mathcal{F}^{(p)}$ for vazio.
+        Devolve a posição do design; ``None`` se ``com_restricoes`` e
+        $\\mathcal{F}^{(p)}$ for vazio.
         """
 
-        chi = self.admissibilidade.chi[perfil] if com_restricoes else None
-        return stage1.preferred_design(self.preference_vectors[perfil], chi)
+        chi = self.admissibilidade.chi[sigla] if com_restricoes else None
+        return stage1.preferred_design(self.preference_vectors[sigla], chi)
 
     @property
     def d_star_inadmissivel_em(self) -> list[str]:
@@ -86,24 +96,21 @@ def run(
         designs, cfg.requisitos, cfg.kappa_c, cfg.kappa_cf, model
     )
     X_norm = stage1.common_minmax(X)
-    scores = stage1.compute_profile_scores(X_norm, cfg.alpha_hurwicz)
+    scores = stage1.compute_profile_scores(X_norm, cfg.perfis)
     preference_vectors = {p: stage1.preference_vector(v) for p, v in scores.items()}
 
     # Restrições de admissibilidade: atuam só no argmax de V^(p) e em W_AT^(p),
     # nunca no payoff, na normalização ou nas pontuações v^(p).
-    adm = admissibility.conjuntos_admissiveis(
-        designs, atributos_por_estado, cfg.fs_perfis, cfg.rho_perfis, cfg.b_cer, cfg.p_lim
-    )
+    adm = admissibility.conjuntos_admissiveis(designs, atributos_por_estado, cfg.perfis, cfg.globais)
 
     W_TT, julgamentos = J.build_WTT_placeholder()
     q0 = np.full(config.N_CRITERIOS, 1.0 / config.N_CRITERIOS)
-    pi = dict(zip(config.PERFIS, cfg.pi_perfis))
 
     anp_resultado = anp.run_anp(
         scores,
         W_TT,
         gamma=cfg.gamma_anp,
-        pi=pi,
+        pi=cfg.pi,
         q0=q0,
         verificar_limite_por_potencias=cfg.verificar_limite_por_potencias,
         chi_por_perfil=adm.chi,
@@ -124,6 +131,7 @@ def run(
         julgamentos=julgamentos,
         consistency_df=consistency_df,
         anp_resultado=anp_resultado,
+        modelo_balistico=model,
     )
 
 

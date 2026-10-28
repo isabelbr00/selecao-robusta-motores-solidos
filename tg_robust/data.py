@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import config
+from . import config, scenarios
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,39 @@ def _renomear_aliases(df: pd.DataFrame) -> pd.DataFrame:
     """Aplica :data:`ALIASES` às colunas de ``df`` (sem alterar o original)."""
 
     renomeio = {c: ALIASES[c] for c in df.columns if c in ALIASES}
+    # colunas por estado: <alias>_theta{j} -> <canônico>_theta{j}
+    for c in df.columns:
+        base, sep, sufixo = c.rpartition("_theta")
+        if sep and sufixo in ("1", "2", "3") and base in ALIASES:
+            renomeio[c] = f"{ALIASES[base]}_theta{sufixo}"
     return df.rename(columns=renomeio)
+
+
+def tem_estados_precomputados(df: pd.DataFrame) -> bool:
+    """Verdadeiro se ``df`` traz colunas ``<criterio>_theta{j}`` (estados já calculados)."""
+
+    return any(f"{c}_theta1" in df.columns for c in scenarios.CRITERIOS_POR_ESTADO)
+
+
+def _completar_nominal_dos_estados(df: pd.DataFrame) -> pd.DataFrame:
+    """No formato por estado, exige os 3 estados e usa ``theta1`` como valor nominal."""
+
+    faltantes = [
+        scenarios.coluna_estado(c, j)
+        for c in scenarios.CRITERIOS_POR_ESTADO
+        for j in (1, 2, 3)
+        if scenarios.coluna_estado(c, j) not in df.columns
+    ]
+    if faltantes:
+        raise ValueError(f"Formato por estado incompleto; colunas ausentes: {faltantes}")
+
+    df = df.copy()
+    for c in scenarios.CRITERIOS_POR_ESTADO:
+        nominal = df[scenarios.coluna_estado(c, 1)]
+        if c in df.columns and not np.allclose(df[c], nominal):
+            raise ValueError(f"Coluna {c!r} difere de {c}_theta1 (valor nominal)")
+        df[c] = nominal
+    return df
 
 
 def resolver_nexp(df: pd.DataFrame) -> pd.Series:
@@ -157,7 +189,11 @@ def load_designs(path: str | Path, *, levantar_erro_restricoes: bool = False) ->
     """Carrega um CSV real de designs Pareto.
 
     O CSV deve conter, após a resolução de aliases (:data:`ALIASES`), as
-    colunas canônicas :data:`COLUNAS_CANONICAS`. Uma coluna opcional
+    colunas canônicas :data:`COLUNAS_CANONICAS`. No formato por estado
+    (colunas ``<criterio>_theta{1,2,3}``, como em ``gerador_pareto/dados``),
+    os três estados são exigidos e ``theta1`` vira o valor nominal; os
+    estados podem então ser lidos por
+    :class:`tg_robust.scenarios.EstadosPrecomputados`. Uma coluna opcional
     ``propelente`` (tipo 1-4) ou ``nexp`` é usada para a propagação de
     cenários; na ausência de ambas, aplica-se o padrão com aviso (ver
     :func:`resolver_nexp`). As restrições de projeto são validadas via
@@ -167,6 +203,8 @@ def load_designs(path: str | Path, *, levantar_erro_restricoes: bool = False) ->
     path = Path(path)
     df = pd.read_csv(path)
     df = _renomear_aliases(df)
+    if tem_estados_precomputados(df):
+        df = _completar_nominal_dos_estados(df)
     _validar_colunas(df)
 
     df = df.copy()
@@ -267,6 +305,7 @@ __all__ = [
     "COLUNA_PROPELENTE",
     "COLUNA_NEXP",
     "COLUNA_SINTETICO",
+    "tem_estados_precomputados",
     "resolver_nexp",
     "validar_restricoes",
     "hash_arquivo",

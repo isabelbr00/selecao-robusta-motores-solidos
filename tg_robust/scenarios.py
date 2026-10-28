@@ -23,12 +23,23 @@ forma correta é ``It * kc * kcf`` (ver identidades testadas em
 
 Quando o modelo real de balística interna estiver disponível, basta
 implementar :class:`BallisticModel` com a mesma assinatura e passá-lo ao
-pipeline (``pipeline.run(cfg, designs, model=ModeloReal())``).
+pipeline (``pipeline.run(cfg, designs, model=ModeloReal())``). Um simulador
+por design no formato de ``gerador_pareto/balistica.py``
+(``simular(x, k_cstar, k_cf) -> dict``) é adaptado por
+:class:`AdaptadorSimulador` (carregado com :func:`carregar_simulador`).
+
+Para dados que já trazem os três estados calculados (colunas
+``<criterio>_theta{1,2,3}``), :class:`EstadosPrecomputados` apenas lê essas
+colunas; ele não reexecuta a balística, logo não serve para a varredura de
+$\\lambda$ (``suporta_reexecucao = False``).
 """
 
 from __future__ import annotations
 
-from typing import Mapping, Protocol
+import importlib.util
+import math
+from pathlib import Path
+from typing import Callable, Mapping, Protocol
 
 import numpy as np
 import pandas as pd
@@ -43,7 +54,12 @@ class BallisticModel(Protocol):
     desempenho sob os fatores de degradação ``kc`` (sobre $c^{*}$) e ``kcf``
     (sobre $C_F$), e devolver um dicionário com um array por critério
     (:data:`config.CRITERIOS`), na mesma ordem/índice de ``designs``.
+
+    ``suporta_reexecucao`` indica se o modelo aceita fatores ``kc``/``kcf``
+    arbitrários (necessário para a varredura de $\\lambda$).
     """
+
+    suporta_reexecucao: bool
 
     def __call__(
         self, designs: pd.DataFrame, kc: float, kcf: float
@@ -60,6 +76,8 @@ class SurrogateBallistics:
     ``nexp`` (expoente da lei de queima), resolvida por
     :func:`tg_robust.data.resolver_nexp`.
     """
+
+    suporta_reexecucao = True
 
     def __call__(
         self, designs: pd.DataFrame, kc: float, kcf: float
@@ -96,6 +114,101 @@ class SurrogateBallistics:
         }
 
 
+# Critérios que variam entre estados e são lidos de colunas <criterio>_theta{j}
+CRITERIOS_POR_ESTADO: tuple[str, ...] = tuple(
+    c for c in config.CRITERIOS if c not in config.CRITERIOS_INVARIANTES
+)
+
+
+def coluna_estado(criterio: str, j: int) -> str:
+    """Nome da coluna do critério no estado ``j`` (1, 2 ou 3), p.ex. ``pcmax_theta2``."""
+
+    return f"{criterio}_theta{j}"
+
+
+class EstadosPrecomputados:
+    """Lê os atributos de cada estado de colunas ``<criterio>_theta{j}`` dos dados.
+
+    Só reconhece os pares ``(kc, kcf)`` de referência
+    (:data:`config.KAPPA_C_REF`, :data:`config.KAPPA_CF_REF`); qualquer outro
+    par exige reexecutar a balística e levanta ``ValueError``.
+    """
+
+    suporta_reexecucao = False
+
+    def __call__(
+        self, designs: pd.DataFrame, kc: float, kcf: float
+    ) -> dict[str, np.ndarray]:
+        pares = zip(config.KAPPA_C_REF, config.KAPPA_CF_REF)
+        j = next(
+            (i for i, (c, f) in enumerate(pares, start=1) if math.isclose(kc, c) and math.isclose(kcf, f)),
+            None,
+        )
+        if j is None:
+            raise ValueError(
+                f"Estados pré-calculados só cobrem os fatores de referência; (kc={kc}, kcf={kcf}) "
+                "exige reexecutar a balística (forneça um BallisticModel)."
+            )
+        saida = {c: designs[c].to_numpy(dtype=float).copy() for c in config.CRITERIOS_INVARIANTES}
+        for c in CRITERIOS_POR_ESTADO:
+            saida[c] = designs[coluna_estado(c, j)].to_numpy(dtype=float).copy()
+        return saida
+
+
+class AdaptadorSimulador:
+    """Adapta um simulador por design ``simular(x, k_cstar, k_cf) -> dict`` à interface.
+
+    ``x`` é montado a partir de cada linha de ``designs`` com as chaves de
+    ``variaveis_projeto`` (renomeadas por ``mapa_entrada``, nome canônico ->
+    nome do simulador); as saídas do simulador são renomeadas por
+    ``mapa_saida`` (nome do simulador -> critério canônico). Os padrões
+    correspondem a ``gerador_pareto/balistica.py``.
+    """
+
+    suporta_reexecucao = True
+
+    def __init__(
+        self,
+        simular: Callable[..., Mapping[str, float]],
+        variaveis_projeto: tuple[str, ...] = ("propelente", "Rc", "Lt", "Dt", "eps", "eta", "omega", "beta"),
+        mapa_entrada: Mapping[str, str] | None = None,
+        mapa_saida: Mapping[str, str] | None = None,
+    ) -> None:
+        self.simular = simular
+        self.variaveis_projeto = variaveis_projeto
+        self.mapa_entrada = dict(mapa_entrada) if mapa_entrada is not None else {"eta": "eta_v"}
+        self.mapa_saida = dict(mapa_saida) if mapa_saida is not None else {"rho_isp": "rhoIsp", "eta_v": "eta"}
+
+    def __call__(
+        self, designs: pd.DataFrame, kc: float, kcf: float
+    ) -> dict[str, np.ndarray]:
+        faltantes = [v for v in self.variaveis_projeto if v not in designs.columns]
+        if faltantes:
+            raise ValueError(f"Variáveis de projeto ausentes para o simulador: {faltantes}")
+
+        saida = {c: np.empty(len(designs)) for c in config.CRITERIOS}
+        for i, linha in enumerate(designs[list(self.variaveis_projeto)].itertuples(index=False)):
+            x = {self.mapa_entrada.get(v, v): val for v, val in zip(self.variaveis_projeto, linha)}
+            resultado = self.simular(x, k_cstar=kc, k_cf=kcf)
+            for nome, valor in resultado.items():
+                criterio = self.mapa_saida.get(nome, nome)
+                if criterio in saida:
+                    saida[criterio][i] = valor
+        return saida
+
+
+def carregar_simulador(caminho: str | Path, funcao: str = "simular") -> Callable[..., Mapping[str, float]]:
+    """Importa ``funcao`` do arquivo Python ``caminho`` (p.ex. ``gerador_pareto/balistica.py``)."""
+
+    caminho = Path(caminho).resolve()
+    spec = importlib.util.spec_from_file_location(f"_balistica_{caminho.stem}", caminho)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Não foi possível carregar {caminho}")
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return getattr(modulo, funcao)
+
+
 def propagate_states(
     designs: pd.DataFrame,
     kappa_c: tuple[float, float, float],
@@ -118,4 +231,13 @@ def propagate_states(
     }
 
 
-__all__ = ["BallisticModel", "SurrogateBallistics", "propagate_states"]
+__all__ = [
+    "BallisticModel",
+    "SurrogateBallistics",
+    "CRITERIOS_POR_ESTADO",
+    "coluna_estado",
+    "EstadosPrecomputados",
+    "AdaptadorSimulador",
+    "carregar_simulador",
+    "propagate_states",
+]

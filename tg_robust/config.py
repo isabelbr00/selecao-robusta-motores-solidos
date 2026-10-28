@@ -3,9 +3,10 @@
 Centraliza, em um único lugar, os parâmetros de referência descritos no
 Capítulo 3 da TG (``cap3_metodologia_revisado.tex``): requisitos propulsivos
 por estágio, fatores dos estados da natureza, parâmetros de decisão
-(α de Hurwicz, γ do ANP, π dos perfis), as restrições de admissibilidade
-por perfil (FS, teto de custo ρ, expoente ``b`` da CER — Seção 3.3.4 de
-``TG_revisao_FS_custo.tex``) e o mapeamento Tabela 6 de tipo de
+(γ do ANP), os perfis organizacionais (:class:`Perfil`: regra de decisão,
+α de Hurwicz, FS, teto de custo ρ e peso π — Seção 3.3.4 de
+``TG_revisao_FS_custo.tex``), os parâmetros globais das restrições
+(:class:`ConfigGlobal`: p_lim, expoente ``b`` da CER, referência do custo) e o mapeamento Tabela 6 de tipo de
 propelente → expoente da lei de queima ``n``.
 
 Não há estado global mutável: ``Config`` é uma dataclass congelada
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Mapping
 
 import numpy as np
@@ -86,31 +87,102 @@ KAPPA_C_REF: tuple[float, float, float] = (1.0, 0.99, 0.98)
 KAPPA_CF_REF: tuple[float, float, float] = (1.0, 0.965, 0.93)
 
 # ─────────────────────────────────────────────────────────────────────────
-# Parâmetros de decisão de referência
+# Parâmetros de decisão de referência que não pertencem a um perfil
 # ─────────────────────────────────────────────────────────────────────────
-ALPHA_HURWICZ_REF: float = 0.8
 GAMMA_ANP_REF: float = 0.5
-PI_PERFIS_REF: tuple[float, float, float] = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
-PERFIS: tuple[str, ...] = ("W", "S", "H")  # Wald (governamental), Savage (comercial), Hurwicz (new space)
 
 # ─────────────────────────────────────────────────────────────────────────
-# Restrições de admissibilidade por perfil (Seção 3.3.4 e Tabela
-# "parametros_perfis" de TG_revisao_FS_custo.tex). Atuam como LIMIARES sobre o
-# conjunto de designs de cada perfil, não como critérios pontuados.
+# Perfis organizacionais (Seções 2.4.3 e 3.3.4 de TG_revisao_FS_custo.tex).
+# Cada perfil reúne sua regra de decisão e suas restrições de admissibilidade
+# (FS e teto de custo rho, aplicados como LIMIARES, não como critérios
+# pontuados). O código trata qualquer lista de perfis com a mesma lógica.
 # ─────────────────────────────────────────────────────────────────────────
-# Capacidade estrutural de referência do envelope: a restrição pcmax < 16 MPa
-# do artigo reinterpretada como p_lim (FS unitário implícito no modelo original).
-P_LIM_REF: float = PCMAX_LIMITE_SUPERIOR  # MPa
-# Fator de segurança mínimo sobre max_j pcmax, na ordem de PERFIS (W, S, H)
-FS_PERFIS_REF: tuple[float, float, float] = (1.40, 1.25, 1.25)
-# Teto do índice de custo relativo c_k, na ordem de PERFIS (W, S, H)
-RHO_PERFIS_REF: tuple[float, float, float] = (1.50, 1.15, 1.25)
+REGRAS_DECISAO: tuple[str, ...] = ("wald", "savage", "hurwicz")
+
+
+@dataclass(frozen=True)
+class Perfil:
+    """Perfil organizacional: regra de decisão + restrições de admissibilidade."""
+
+    nome: str  # "Governamental", "Comercial", "New Space"
+    sigla: str  # "W", "S", "H"
+    regra: str  # "wald", "savage", "hurwicz"
+    alpha: float | None  # coeficiente de otimismo, só para "hurwicz"
+    FS: float  # fator de segurança mínimo sobre max_j pcmax
+    rho: float  # teto do índice de custo relativo c_k (math.inf = sem teto)
+    peso_pi: float  # peso na síntese do ANP
+
+    def __post_init__(self) -> None:
+        if self.regra not in REGRAS_DECISAO:
+            raise ValueError(f"regra deve ser uma de {REGRAS_DECISAO}, recebido {self.regra!r}")
+        if self.regra == "hurwicz":
+            if self.alpha is None or not (0.0 <= self.alpha <= 1.0):
+                raise ValueError(f"perfil {self.sigla}: alpha de Hurwicz deve estar em [0, 1]")
+        elif self.alpha is not None:
+            raise ValueError(f"perfil {self.sigla}: alpha só se aplica à regra 'hurwicz'")
+        if not self.FS > 0.0:
+            raise ValueError(f"perfil {self.sigla}: FS deve ser positivo")
+        if not self.rho > 0.0:
+            # rho = math.inf é válido e equivale a retirar o teto de custo
+            raise ValueError(f"perfil {self.sigla}: rho deve ser positivo (ou math.inf)")
+        if not self.peso_pi >= 0.0:
+            raise ValueError(f"perfil {self.sigla}: peso_pi deve ser não negativo")
+
+
+PERFIS_REFERENCIA: tuple[Perfil, ...] = (
+    Perfil("Governamental", "W", "wald", None, FS=1.40, rho=1.50, peso_pi=1.0 / 3.0),
+    Perfil("Comercial", "S", "savage", None, FS=1.25, rho=1.15, peso_pi=1.0 / 3.0),
+    Perfil("New Space", "H", "hurwicz", 0.8, FS=1.25, rho=1.25, peso_pi=1.0 / 3.0),
+)
+
+
+def substituir_perfil(perfis: tuple[Perfil, ...], sigla: str, **campos) -> tuple[Perfil, ...]:
+    """Nova lista de perfis com os ``campos`` do perfil ``sigla`` alterados."""
+
+    if sigla not in {p.sigla for p in perfis}:
+        raise KeyError(f"perfil {sigla!r} não está na lista")
+    return tuple(replace(p, **campos) if p.sigla == sigla else p for p in perfis)
+
+
+def perfis_sem_restricoes(perfis: tuple[Perfil, ...]) -> tuple[Perfil, ...]:
+    """Mesmos perfis com ``FS = 1`` e ``rho = inf``: diferem só pela regra de decisão."""
+
+    return tuple(replace(p, FS=1.0, rho=math.inf) for p in perfis)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Parâmetros globais das restrições (não dependem do perfil)
+# ─────────────────────────────────────────────────────────────────────────
 # Expoente b da CER de motores sólidos (TransCost, Koelle 2013).
-# PLACEHOLDER: ainda não definido. Enquanto for None, c_k não é calculado e a
-# restrição de teto de custo NÃO é aplicada (todos os designs são
-# economicamente admissíveis), com aviso explícito (aviso_b_cer_ausente).
+# PROVISÓRIO: 1.0 até ser trocado pelo valor da CER (aviso emitido enquanto isso).
 # TODO: preencher com o valor da CER de motores sólidos do Koelle (2013), com página/tabela.
-B_CER_REF: float | None = None
+B_CER_PROVISORIO: float = 1.0
+REFERENCIAS_CUSTO: tuple[str, ...] = ("mediana", "minimo")
+
+
+@dataclass(frozen=True)
+class ConfigGlobal:
+    """Parâmetros das restrições de admissibilidade comuns a todos os perfis."""
+
+    # Capacidade estrutural de referência do envelope: a restrição pcmax < 16 MPa
+    # do artigo reinterpretada como p_lim (FS unitário implícito no modelo original).
+    p_lim: float = PCMAX_LIMITE_SUPERIOR  # MPa
+    b_cer: float = B_CER_PROVISORIO
+    # Referência do índice de custo: c_k = (base_k / ref)^b, com ref = mediana ou
+    # mínimo de base_d sobre TODOS os designs do estágio.
+    referencia_custo: str = "mediana"
+
+    def __post_init__(self) -> None:
+        if not self.p_lim > 0.0:
+            raise ValueError("p_lim deve ser positivo")
+        if not (self.b_cer > 0.0 and math.isfinite(self.b_cer)):
+            raise ValueError("b_cer deve ser positivo e finito")
+        if self.referencia_custo not in REFERENCIAS_CUSTO:
+            raise ValueError(f"referencia_custo deve ser uma de {REFERENCIAS_CUSTO}")
+
+    @property
+    def b_provisorio(self) -> bool:
+        return self.b_cer == B_CER_PROVISORIO
 
 # Índice de consistência aleatória de Saaty por ordem da matriz (RI)
 RI_SAATY: Mapping[int, float] = {
@@ -141,43 +213,47 @@ class Config:
 
     estagio: int  # 1 ou 2
     seed: int = 0
-    alpha_hurwicz: float = ALPHA_HURWICZ_REF
+    perfis: tuple[Perfil, ...] = PERFIS_REFERENCIA
+    globais: ConfigGlobal = field(default_factory=ConfigGlobal)
     gamma_anp: float = GAMMA_ANP_REF
-    pi_perfis: tuple[float, float, float] = PI_PERFIS_REF
     kappa_c: tuple[float, float, float] = KAPPA_C_REF
     kappa_cf: tuple[float, float, float] = KAPPA_CF_REF
-    p_lim: float = P_LIM_REF
-    fs_perfis: tuple[float, float, float] = FS_PERFIS_REF
-    rho_perfis: tuple[float, float, float] = RHO_PERFIS_REF
-    b_cer: float | None = B_CER_REF
     verificar_limite_por_potencias: bool = False
 
     def __post_init__(self) -> None:
         if self.estagio not in (1, 2):
             raise ValueError(f"estagio deve ser 1 ou 2, recebido {self.estagio!r}")
-        if not (0.0 <= self.alpha_hurwicz <= 1.0):
-            raise ValueError("alpha_hurwicz deve estar em [0, 1]")
         if not (0.0 < self.gamma_anp < 1.0):
             raise ValueError("gamma_anp deve estar em (0, 1)")
-        if abs(sum(self.pi_perfis) - 1.0) > 1e-9:
-            raise ValueError("pi_perfis deve somar 1")
         if len(self.kappa_c) != 3 or len(self.kappa_cf) != 3:
             raise ValueError("kappa_c e kappa_cf devem ter 3 elementos (um por estado)")
-        if not self.p_lim > 0.0:
-            raise ValueError("p_lim deve ser positivo")
-        if len(self.fs_perfis) != 3 or len(self.rho_perfis) != 3:
-            raise ValueError("fs_perfis e rho_perfis devem ter 3 elementos (W, S, H)")
-        if any(not fs > 0.0 for fs in self.fs_perfis):
-            raise ValueError("fs_perfis deve ser positivo")
-        if any(not rho >= 1.0 for rho in self.rho_perfis):
-            # c_k >= 1 por construção (razão ao mínimo), logo rho < 1 esvazia F^(p)
-            raise ValueError("rho_perfis deve ser >= 1 (ou math.inf para desativar o teto)")
-        if self.b_cer is not None and not (self.b_cer > 0.0 and math.isfinite(self.b_cer)):
-            raise ValueError("b_cer deve ser positivo e finito (ou None enquanto não definido)")
+        validar_perfis(self.perfis)
 
     @property
     def requisitos(self) -> Requisitos:
         return REQUISITOS_ESTAGIO[self.estagio]
+
+    @property
+    def siglas(self) -> tuple[str, ...]:
+        return tuple(p.sigla for p in self.perfis)
+
+    @property
+    def pi(self) -> dict[str, float]:
+        """Pesos ``pi`` da síntese, por sigla."""
+
+        return {p.sigla: p.peso_pi for p in self.perfis}
+
+
+def validar_perfis(perfis: tuple[Perfil, ...]) -> None:
+    """Uma lista de perfis válida: não vazia, siglas únicas e ``peso_pi`` somando 1."""
+
+    if len(perfis) == 0:
+        raise ValueError("a lista de perfis não pode ser vazia")
+    siglas = [p.sigla for p in perfis]
+    if len(set(siglas)) != len(siglas):
+        raise ValueError(f"siglas de perfil repetidas: {siglas}")
+    if abs(sum(p.peso_pi for p in perfis) - 1.0) > 1e-9:
+        raise ValueError("os pesos peso_pi dos perfis devem somar 1")
 
 
 def kappa_escalado(kappa_ref: tuple[float, float, float], lam: float) -> tuple[float, float, float]:
@@ -191,14 +267,14 @@ def kappa_escalado(kappa_ref: tuple[float, float, float], lam: float) -> tuple[f
     return tuple(1.0 - lam * (1.0 - float(k)) for k in kappa_ref)  # type: ignore[return-value]
 
 
-def aviso_b_cer_ausente() -> str:
-    """Emite (e devolve) o aviso de que o expoente ``b`` da CER não foi definido."""
+def aviso_b_cer_provisorio() -> str:
+    """Emite (e devolve) o aviso de que o expoente ``b`` da CER ainda é o provisório."""
 
     aviso = (
-        "Expoente b da CER de motores sólidos (Koelle, TransCost) NÃO definido "
-        "(config.B_CER_REF=None / --b-cer ausente): o índice de custo c_k não foi "
-        "calculado e o teto de custo rho_p NÃO foi aplicado; apenas a restrição "
-        "estrutural (FS) define F^(p). Preencha b antes de reportar resultados."
+        f"Expoente b da CER de motores sólidos (Koelle, TransCost) PROVISÓRIO "
+        f"(b={B_CER_PROVISORIO}): o índice de custo c_k e o teto rho_p usam um valor "
+        "não definitivo. Troque config.B_CER_PROVISORIO / --b-cer pelo expoente da "
+        "CER antes de reportar resultados."
     )
     warnings.warn(aviso, stacklevel=2)
     return aviso
@@ -214,10 +290,6 @@ __all__ = [
     "PCMAX_LIMITE_SUPERIOR",
     "ETA_LIMITE_INFERIOR",
     "COLUNAS_GEOMETRIA",
-    "P_LIM_REF",
-    "FS_PERFIS_REF",
-    "RHO_PERFIS_REF",
-    "B_CER_REF",
     "Requisitos",
     "REQUISITOS_ESTAGIO",
     "N_DESIGNS_REFERENCIA",
@@ -226,14 +298,20 @@ __all__ = [
     "ESTADOS_NOMES",
     "KAPPA_C_REF",
     "KAPPA_CF_REF",
-    "ALPHA_HURWICZ_REF",
     "GAMMA_ANP_REF",
-    "PI_PERFIS_REF",
-    "PERFIS",
+    "REGRAS_DECISAO",
+    "Perfil",
+    "PERFIS_REFERENCIA",
+    "substituir_perfil",
+    "perfis_sem_restricoes",
+    "B_CER_PROVISORIO",
+    "REFERENCIAS_CUSTO",
+    "ConfigGlobal",
     "RI_SAATY",
     "CR_LIMITE",
     "G0",
     "Config",
+    "validar_perfis",
     "kappa_escalado",
-    "aviso_b_cer_ausente",
+    "aviso_b_cer_provisorio",
 ]

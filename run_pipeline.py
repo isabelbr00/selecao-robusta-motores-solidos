@@ -4,10 +4,19 @@
 Uso:
     python run_pipeline.py --stage 1 --out resultados_estagio1 --seed 0
     python run_pipeline.py --stage 2 --csv caminho/para/designs.csv --out resultados_estagio2
+    python run_pipeline.py --stage 2 --csv ../gerador_pareto/dados/pareto_estagio2.csv \\
+        --balistica ../gerador_pareto/balistica.py --out resultados_teste2
 
 Sem ``--csv``, gera designs sintéticos (:func:`tg_robust.data.synthetic_designs`)
 marcados explicitamente como tal — ver aviso no terminal e a coluna
 ``sintetico`` / o campo ``dados_sinteticos`` em ``run_config.json``.
+
+Modelo de balística (estados θ e varredura de λ):
+* ``--balistica arquivo.py``: simulador ``simular(x, k_cstar, k_cf)`` do arquivo
+  (formato de ``gerador_pareto/balistica.py``) — reexecuta todos os estados;
+* CSV com colunas ``<criterio>_theta{1,2,3}`` e sem ``--balistica``: estados
+  lidos dos dados; a varredura de λ é PULADA (com aviso);
+* demais casos: modelo substituto analítico (``SurrogateBallistics``).
 """
 
 from __future__ import annotations
@@ -16,6 +25,7 @@ import argparse
 import dataclasses
 import json
 import logging
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,23 +35,40 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from tg_robust import admissibility, baseline, config, data, pipeline, sensitivity  # noqa: E402
+from tg_robust import admissibility, baseline, config, data, pipeline, scenarios, sensitivity  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("run_pipeline")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--stage", type=int, choices=(1, 2), required=True, help="Estágio (1 ou 2)")
-    parser.add_argument("--csv", type=str, default=None, help="CSV real de designs Pareto; se omitido, usa dados sintéticos")
+    parser.add_argument("--csv", type=str, default=None, help="CSV de designs Pareto; se omitido, usa dados sintéticos")
+    parser.add_argument(
+        "--balistica",
+        type=str,
+        default=None,
+        help="Arquivo .py com simular(x, k_cstar, k_cf) para reexecutar a balística (estados e varredura de λ)",
+    )
     parser.add_argument("--out", type=str, required=True, help="Diretório de saída")
     parser.add_argument("--seed", type=int, default=0, help="Semente aleatória (reprodutibilidade)")
     parser.add_argument(
         "--b-cer",
         type=float,
-        default=config.B_CER_REF,
-        help="Expoente b da CER de motores sólidos (Koelle, TransCost); sem ele, o teto de custo não é aplicado",
+        default=config.B_CER_PROVISORIO,
+        help=f"Expoente b da CER de motores sólidos (Koelle, TransCost); padrão PROVISÓRIO = {config.B_CER_PROVISORIO}",
+    )
+    parser.add_argument(
+        "--referencia-custo",
+        choices=config.REFERENCIAS_CUSTO,
+        default=config.ConfigGlobal().referencia_custo,
+        help="Referência do índice de custo c_k (mediana ou mínimo sobre todos os designs)",
+    )
+    parser.add_argument(
+        "--sem-teto-custo",
+        action="store_true",
+        help="Retira o teto de custo (rho = inf em todos os perfis); só a restrição de FS permanece",
     )
     parser.add_argument(
         "--verificar-limite-potencias",
@@ -49,6 +76,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Verifica o limite por potências contra o limite fechado (mais lento)",
     )
     return parser.parse_args(argv)
+
+
+def _json_seguro(obj):
+    """Converte ``inf``/``nan`` em texto para gerar JSON estrito (``rho = inf`` é válido)."""
+
+    if isinstance(obj, np.generic):
+        obj = obj.item()
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _json_seguro(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_seguro(v) for v in obj]
+    return obj
+
+
+def escolher_modelo(args: argparse.Namespace, designs: pd.DataFrame) -> scenarios.BallisticModel:
+    if args.balistica is not None:
+        logger.info("Balística reexecutada pelo simulador de %s", args.balistica)
+        return scenarios.AdaptadorSimulador(scenarios.carregar_simulador(args.balistica))
+    if data.tem_estados_precomputados(designs):
+        logger.info("Estados θ lidos dos dados (sem reexecução da balística)")
+        return scenarios.EstadosPrecomputados()
+    return scenarios.SurrogateBallistics()
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -61,7 +112,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.csv is not None:
         designs = data.load_designs(args.csv)
         csv_hash = data.hash_arquivo(args.csv)
-        logger.info("Designs reais carregados de %s (n=%d)", args.csv, len(designs))
+        logger.info("Designs carregados de %s (n=%d)", args.csv, len(designs))
     else:
         designs = data.synthetic_designs(args.stage, seed=args.seed)
         logger.warning(
@@ -72,15 +123,22 @@ def main(argv: list[str] | None = None) -> None:
             args.seed,
         )
 
+    perfis = config.PERFIS_REFERENCIA
+    if args.sem_teto_custo:
+        perfis = tuple(dataclasses.replace(p, rho=math.inf) for p in perfis)
     cfg = config.Config(
         estagio=args.stage,
         seed=args.seed,
-        b_cer=args.b_cer,
+        perfis=perfis,
+        globais=config.ConfigGlobal(b_cer=args.b_cer, referencia_custo=args.referencia_custo),
         verificar_limite_por_potencias=args.verificar_limite_potencias,
     )
+    model = escolher_modelo(args, designs)
 
     logger.info("Executando pipeline (Estágio 1 + ANP) para %d designs...", len(designs))
-    resultado = pipeline.run(cfg, designs)
+    resultado = pipeline.run(cfg, designs, model=model)
+    ids = resultado.design_ids
+    siglas = cfg.siglas
 
     logger.info("Calculando baseline AHP (aproximação)...")
     bl = baseline.ahp_baseline(designs, cfg.requisitos)
@@ -93,22 +151,30 @@ def main(argv: list[str] | None = None) -> None:
     sens_restricoes = sensitivity.sweep_restricoes(resultado)
 
     adm = resultado.admissibilidade
-    if cfg.b_cer is None:
-        logger.warning(config.aviso_b_cer_ausente())
+    if cfg.globais.b_provisorio:
+        logger.warning(config.aviso_b_cer_provisorio())
+
+    # ─── scores_<perfil>.csv ────────────────────────────────────────────
+    for sigla, v in resultado.scores.items():
+        df_scores = pd.DataFrame(v, columns=list(config.CRITERIOS))
+        df_scores.insert(0, "design_id", ids)
+        df_scores["V"] = resultado.preference_vectors[sigla]
+        df_scores.to_csv(out_dir / f"scores_{sigla}.csv", index=False)
 
     # ─── admissibilidade.csv (por design) e admissibilidade_resumo.csv ──
     df_adm = pd.DataFrame(
         {
-            "design_id": designs.index,
+            "design_id": ids,
+            "pcmax_theta1": adm.pcmax_nominal,
             "pcmax_max_estados": adm.pcmax_max,
-            "razao_massa_envelope": adm.razao_massa,
+            "base_custo": adm.base_custo,
             "indice_custo_c": adm.c,
         }
     )
-    for p in config.PERFIS:
-        df_adm[f"adm_pressao_{p}"] = adm.adm_pressao[p]
-        df_adm[f"adm_custo_{p}"] = adm.adm_custo[p]
-        df_adm[f"F_{p}"] = adm.chi[p]
+    for s in siglas:
+        df_adm[f"adm_pressao_{s}"] = adm.adm_pressao[s]
+        df_adm[f"adm_custo_{s}"] = adm.adm_custo[s]
+        df_adm[f"F_{s}"] = adm.chi[s]
     df_adm["F_intersecao"] = adm.intersecao
     df_adm.to_csv(out_dir / "admissibilidade.csv", index=False)
     resumo_adm = admissibility.resumo(adm)
@@ -116,47 +182,34 @@ def main(argv: list[str] | None = None) -> None:
 
     # ─── vencedores_por_perfil.csv (com e sem restrições) ───────────────
     linhas_venc = []
-    for p in config.PERFIS:
-        sem = resultado.vencedor_perfil(p, com_restricoes=False)
-        com = resultado.vencedor_perfil(p, com_restricoes=True)
-        V = resultado.preference_vectors[p]
+    for s in siglas:
+        sem = resultado.vencedor_perfil(s, com_restricoes=False)
+        com = resultado.vencedor_perfil(s, com_restricoes=True)
+        V = resultado.preference_vectors[s]
         linhas_venc.append(
             {
-                "perfil": p,
-                "vencedor_sem_restricoes": int(designs.index[sem]),
+                "perfil": s,
+                "vencedor_sem_restricoes": ids[sem],
                 "V_sem_restricoes": V[sem],
-                "vencedor_com_restricoes": None if com is None else int(designs.index[com]),
+                "vencedor_com_restricoes": None if com is None else ids[com],
                 "V_com_restricoes": None if com is None else V[com],
-                "excluido_da_sintese": p in resultado.anp_resultado.perfis_excluidos,
+                "excluido_da_sintese": s in resultado.anp_resultado.perfis_excluidos,
             }
         )
     df_venc = pd.DataFrame(linhas_venc)
     df_venc.to_csv(out_dir / "vencedores_por_perfil.csv", index=False)
 
-    # ─── scores_<perfil>.csv ────────────────────────────────────────────
-    for perfil, v in resultado.scores.items():
-        df_scores = pd.DataFrame(v, columns=list(config.CRITERIOS))
-        df_scores.insert(0, "design_id", designs.index)
-        df_scores["V"] = resultado.preference_vectors[perfil]
-        df_scores.to_csv(out_dir / f"scores_{perfil}.csv", index=False)
-
     # ─── ranking_final.csv (top-50) ─────────────────────────────────────
     g_por_perfil = resultado.anp_resultado.g_por_perfil
-    ranking = pd.DataFrame(
-        {
-            "design_id": designs.index,
-            "g": resultado.g,
-            "g_W": g_por_perfil["W"],
-            "g_S": g_por_perfil["S"],
-            "g_H": g_por_perfil["H"],
-            "V_W": resultado.preference_vectors["W"],
-            "V_S": resultado.preference_vectors["S"],
-            "V_H": resultado.preference_vectors["H"],
-            "F_W": adm.chi["W"],
-            "F_S": adm.chi["S"],
-            "F_H": adm.chi["H"],
-        }
-    ).join(bl, how="left")
+    colunas = {"design_id": ids, "g": resultado.g}
+    for s in siglas:
+        # perfil excluído da síntese (F vazio) não tem g^(p)
+        colunas[f"g_{s}"] = g_por_perfil.get(s, np.full(len(ids), np.nan))
+    for s in siglas:
+        colunas[f"V_{s}"] = resultado.preference_vectors[s]
+    for s in siglas:
+        colunas[f"F_{s}"] = adm.chi[s]
+    ranking = pd.DataFrame(colunas).join(bl, how="left")
     ranking = ranking.sort_values("g", ascending=False).reset_index(drop=True)
     ranking.insert(0, "rank_integrado", np.arange(1, len(ranking) + 1))
     ranking.head(50).to_csv(out_dir / "ranking_final.csv", index=False)
@@ -185,36 +238,43 @@ def main(argv: list[str] | None = None) -> None:
         "dados_sinteticos": dados_sinteticos,
         "csv_path": args.csv,
         "csv_sha256": csv_hash,
+        "modelo_balistico": type(model).__name__,
+        "balistica_path": args.balistica,
+        "sens_lambda_executada": not sens_lambda.empty,
         "config": dataclasses.asdict(cfg),
         "verificar_limite_por_potencias": args.verificar_limite_potencias,
         "cr_excede_limite": bool(resultado.consistency_df["cr_excede_limite"].any()),
-        "d_star_design_id": int(designs.index[resultado.d_star]),
-        "b_cer_definido": cfg.b_cer is not None,
-        "teto_custo_aplicado": cfg.b_cer is not None,
-        "tamanho_F": {p: int(adm.chi[p].sum()) for p in config.PERFIS},
+        "d_star_design_id": ids[resultado.d_star],
+        "b_cer_provisorio": cfg.globais.b_provisorio,
+        "referencia_custo": cfg.globais.referencia_custo,
+        "tamanho_F": {s: int(adm.chi[s].sum()) for s in siglas},
         "tamanho_intersecao_F": int(adm.intersecao.sum()),
+        "correlacao_c_pcmax_theta1": adm.correlacao_custo_pressao,
         "perfis_excluidos_da_sintese": list(resultado.anp_resultado.perfis_excluidos),
         "d_star_inadmissivel_em": resultado.d_star_inadmissivel_em,
     }
     with open(out_dir / "run_config.json", "w", encoding="utf-8") as f:
-        json.dump(run_config, f, indent=2, ensure_ascii=False)
+        json.dump(_json_seguro(run_config), f, indent=2, ensure_ascii=False, allow_nan=False, default=str)
 
     # ─── resumo no terminal ─────────────────────────────────────────────
     print()
     print(f"=== Resumo — Estágio {args.stage} (n={len(designs)}, "
-          f"{'SINTÉTICO' if dados_sinteticos else 'dados reais'}) ===")
+          f"{'SINTÉTICO' if dados_sinteticos else 'dados de ' + Path(args.csv).name}) ===")
+    print(f"Referência do custo: {cfg.globais.referencia_custo}; b = {cfg.globais.b_cer}"
+          f"{' (PROVISÓRIO)' if cfg.globais.b_provisorio else ''}")
     print(f"Design selecionado (d*): design_id={run_config['d_star_design_id']}, g={resultado.g[resultado.d_star]:.4f}")
     inadm = run_config["d_star_inadmissivel_em"]
     print(f"d* inadmissível para os perfis: {', '.join(inadm) if inadm else 'nenhum'}")
     print("Conjuntos admissíveis F^(p):")
     print(resumo_adm.to_string(index=False))
+    print(f"Correlação c_k x pcmax(θ1): {adm.correlacao_custo_pressao:.3f}")
     if run_config["perfis_excluidos_da_sintese"]:
         print(f"Perfis excluídos da síntese (F vazio): {run_config['perfis_excluidos_da_sintese']}")
     print("Vencedor por perfil (argmax V^(p)), sem -> com restrições:")
     for _, linha in df_venc.iterrows():
         print(f"  {linha['perfil']}: {linha['vencedor_sem_restricoes']} -> {linha['vencedor_com_restricoes']}")
-    if not run_config["b_cer_definido"]:
-        print("ATENÇÃO: expoente b da CER não definido; teto de custo NÃO aplicado (use --b-cer).")
+    if not run_config["sens_lambda_executada"]:
+        print("ATENÇÃO: varredura de λ pulada (sem modelo de balística que reexecute os estados; use --balistica).")
     print(f"CR do rascunho de julgamentos excede 0,10? {run_config['cr_excede_limite']}")
     print(f"Saídas gravadas em: {out_dir.resolve()}")
 

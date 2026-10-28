@@ -12,7 +12,7 @@ def cenario_pequeno():
     model = SurrogateBallistics()
     X, _ = stage1.build_payoff_tensor(df, req, config.KAPPA_C_REF, config.KAPPA_CF_REF, model)
     Xn = stage1.common_minmax(X)
-    scores = stage1.compute_profile_scores(Xn, alpha=0.8)
+    scores = stage1.compute_profile_scores(Xn, config.PERFIS_REFERENCIA)
     with pytest.warns(UserWarning):
         W_TT, _ = J.build_WTT_placeholder()
     q0 = np.full(config.N_CRITERIOS, 1.0 / config.N_CRITERIOS)

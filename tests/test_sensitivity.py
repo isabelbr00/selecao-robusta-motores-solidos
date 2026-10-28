@@ -40,7 +40,7 @@ def test_sweep_pi_inclui_canonicos(resultado_pequeno):
     df = sensitivity.sweep_pi(resultado_pequeno)
     canonicos = df[df["tipo"] == "canonico"]
     assert len(canonicos) == 3
-    assert set(canonicos["perfil_variado"]) == set(config.PERFIS)
+    assert set(canonicos["perfil_variado"]) == set(resultado_pequeno.cfg.siglas)
 
 
 def test_sweep_anp_inclui_gamma_zero(resultado_pequeno):

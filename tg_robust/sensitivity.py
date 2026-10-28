@@ -10,9 +10,11 @@ quando a varredura os altera):
 3. :func:`sweep_anp` — julgamentos de ``W_TT`` (±1 nível de Saaty) e ``gamma``;
 4. :func:`sweep_lambda` — magnitude dos estados de incerteza (reexecuta o
    Estágio 1 completo e recalcula $\\mathcal{F}^{(p)}$);
-5. :func:`sweep_restricoes` — fatores de segurança ``FS_p`` e tetos de custo
-   ``rho_p`` (item 5 da Seção 3.5 de ``TG_revisao_FS_custo.tex``), mais o
-   caso sem restrições (``FS=1``, ``rho=inf``).
+5. :func:`sweep_restricoes` — fatores de segurança ``FS_p``, tetos de custo
+   ``rho_p`` (item 5 da Seção 3.5 de ``TG_revisao_FS_custo.tex``), referência
+   do índice de custo (mínimo/mediana) e o caso sem restrições
+   (``FS=1``, ``rho=inf``). Cada cenário é uma lista de perfis
+   (:func:`cenarios_restricoes`), avaliada por :func:`avaliar_cenario`.
 
 A estabilidade de cada ranking perturbado frente ao de referência é medida
 por três indicadores (:func:`metricas_estabilidade`): manutenção de
@@ -24,6 +26,8 @@ devolve o subconjunto de valores de um parâmetro varrido para os quais
 from __future__ import annotations
 
 import math
+import warnings
+from dataclasses import replace
 from typing import Mapping
 
 import numpy as np
@@ -34,7 +38,7 @@ from . import admissibility, anp, config
 from . import judgments as J
 from . import stage1
 from .pipeline import Result
-from .scenarios import BallisticModel, SurrogateBallistics
+from .scenarios import BallisticModel
 
 
 def metricas_estabilidade(g_ref: np.ndarray, g_novo: np.ndarray) -> dict[str, float | bool]:
@@ -98,18 +102,24 @@ def _metricas_indefinidas() -> dict[str, float | bool]:
 def sweep_alpha(
     ref: Result, alphas: tuple[float, ...] = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
 ) -> pd.DataFrame:
-    """Varre $\\alpha \\in \\{0, 0.1, \\dots, 0.9, 1\\}$ do perfil Hurwicz."""
+    """Varre $\\alpha \\in \\{0, 0.1, \\dots, 0.9, 1\\}$ dos perfis com regra Hurwicz.
 
-    pi = dict(zip(config.PERFIS, ref.cfg.pi_perfis))
+    Todos os perfis com ``regra == "hurwicz"`` recebem o mesmo ``alpha``; os
+    demais perfis e os conjuntos admissíveis permanecem os da referência.
+    """
+
+    siglas_hurwicz = [p.sigla for p in ref.cfg.perfis if p.regra == "hurwicz"]
     linhas = []
     for alpha in alphas:
-        v_H = stage1.hurwicz(ref.X_norm, alpha)
-        scores_novo = {"W": ref.scores["W"], "S": ref.scores["S"], "H": v_H}
+        perfis_novos = ref.cfg.perfis
+        for sigla in siglas_hurwicz:
+            perfis_novos = config.substituir_perfil(perfis_novos, sigla, alpha=alpha)
+        scores_novo = stage1.compute_profile_scores(ref.X_norm, perfis_novos)
         resultado = anp.run_anp(
             scores_novo,
             ref.W_TT,
             gamma=ref.cfg.gamma_anp,
-            pi=pi,
+            pi=ref.cfg.pi,
             q0=ref.anp_resultado.q0,
             chi_por_perfil=ref.admissibilidade.chi,
         )
@@ -134,7 +144,8 @@ def sweep_pi(ref: Result) -> pd.DataFrame:
     indefinida (``sintese_definida=False``, indicadores ``NaN``).
     """
 
-    pi_ref = dict(zip(config.PERFIS, ref.cfg.pi_perfis))
+    pi_ref = ref.cfg.pi
+    siglas = ref.cfg.siglas
     g_por_perfil = ref.anp_resultado.g_por_perfil
     linhas = []
 
@@ -145,7 +156,7 @@ def sweep_pi(ref: Result) -> pd.DataFrame:
             return {"sintese_definida": False, **_metricas_indefinidas()}
         return {"sintese_definida": True, **metricas_estabilidade(ref.g, g_novo)}
 
-    for p in config.PERFIS:
+    for p in siglas:
         for sinal, rotulo in ((+0.20, "+20%"), (-0.20, "-20%")):
             pi_variado = dict(pi_ref)
             pi_variado[p] = pi_ref[p] * (1.0 + sinal)
@@ -154,8 +165,8 @@ def sweep_pi(ref: Result) -> pd.DataFrame:
                 {"tipo": "percentual", "perfil_variado": p, "variacao": rotulo, "pi": pi_variado, **_avaliar(pi_variado)}
             )
 
-    for p_canonico in config.PERFIS:
-        pi_canonico = {p: (1.0 if p == p_canonico else 0.0) for p in config.PERFIS}
+    for p_canonico in siglas:
+        pi_canonico = {p: (1.0 if p == p_canonico else 0.0) for p in siglas}
         linhas.append(
             {"tipo": "canonico", "perfil_variado": p_canonico, "variacao": "pi=1", "pi": pi_canonico, **_avaliar(pi_canonico)}
         )
@@ -171,7 +182,7 @@ def sweep_anp(
 ) -> pd.DataFrame:
     """Perturba cada julgamento de ``W_TT`` em ±1 nível de Saaty, e varia ``gamma``."""
 
-    pi = dict(zip(config.PERFIS, ref.cfg.pi_perfis))
+    pi = ref.cfg.pi
     q0 = ref.anp_resultado.q0
     W_AT_por_perfil = ref.anp_resultado.W_AT_por_perfil
     linhas = []
@@ -233,13 +244,25 @@ def sweep_lambda(
 ) -> pd.DataFrame:
     """Escala a magnitude dos estados 2 e 3 por $\\lambda$ e reexecuta o Estágio 1.
 
+    Usa ``model`` ou, na falta dele, o modelo de balística da referência
+    (``ref.modelo_balistico``). Se esse modelo não reexecuta a balística
+    (estados lidos dos dados, :class:`~tg_robust.scenarios.EstadosPrecomputados`),
+    a varredura é pulada com aviso e devolve um ``DataFrame`` vazio.
     Como ``max_j pcmax`` depende dos estados, $\\mathcal{F}^{(p)}$ é recalculado
-    para cada $\\lambda$ com os parâmetros de restrição da referência.
+    para cada $\\lambda$ com os perfis da referência.
     """
 
-    model = model if model is not None else SurrogateBallistics()
-    linhas = []
+    model = model if model is not None else ref.modelo_balistico
+    if not getattr(model, "suporta_reexecucao", True):
+        warnings.warn(
+            "Varredura de lambda PULADA: nenhum modelo de balística capaz de reexecutar "
+            "os estados foi fornecido (os estados vêm prontos dos dados). Passe um "
+            "BallisticModel (p.ex. --balistica caminho/balistica.py).",
+            stacklevel=2,
+        )
+        return pd.DataFrame(columns=["lambda"])
 
+    linhas = []
     for lam in lambdas:
         kappa_c_novo = config.kappa_escalado(config.KAPPA_C_REF, lam)
         kappa_cf_novo = config.kappa_escalado(config.KAPPA_CF_REF, lam)
@@ -248,23 +271,41 @@ def sweep_lambda(
             ref.designs, ref.cfg.requisitos, kappa_c_novo, kappa_cf_novo, model
         )
         X_norm_novo = stage1.common_minmax(X_novo)
-        scores_novo = stage1.compute_profile_scores(X_norm_novo, ref.cfg.alpha_hurwicz)
-        adm_novo = admissibility.conjuntos_admissiveis(
-            ref.designs, atributos_novo, ref.cfg.fs_perfis, ref.cfg.rho_perfis, ref.cfg.b_cer, ref.cfg.p_lim
+        linhas.append(
+            {
+                "lambda": lam,
+                **avaliar_cenario(ref, ref.cfg.perfis, ref.cfg.globais, X_norm=X_norm_novo, atributos=atributos_novo),
+            }
         )
-
-        linhas.append({"lambda": lam, **_avaliar_anp_com_restricoes(ref, scores_novo, adm_novo)})
 
     return pd.DataFrame(linhas)
 
 
-def _avaliar_anp_com_restricoes(
-    ref: Result, scores: dict[str, np.ndarray], adm: admissibility.Admissibilidade
+def avaliar_cenario(
+    ref: Result,
+    perfis: tuple[config.Perfil, ...],
+    globais: config.ConfigGlobal,
+    X_norm: np.ndarray | None = None,
+    atributos: dict[str, dict[str, np.ndarray]] | None = None,
 ) -> dict:
-    """Refaz o ANP com as máscaras ``adm`` e mede a estabilidade frente a ``ref``."""
+    """Roda Estágio 1 (pontuações), restrições e ANP para uma lista de perfis.
 
-    pi = dict(zip(config.PERFIS, ref.cfg.pi_perfis))
-    tamanhos = {f"n_F_{p}": int(adm.chi[p].sum()) for p in config.PERFIS}
+    O mesmo procedimento serve para qualquer lista de perfis: pontuações pela
+    regra de cada perfil, $\\mathcal{F}^{(p)}$ pelos seus FS/rho, síntese pelos
+    seus ``peso_pi``. ``X_norm``/``atributos`` padrão: os da referência.
+    Devolve tamanhos de $\\mathcal{F}^{(p)}$, ``d*``, perfis em que ``d*`` é
+    inadmissível e os indicadores de estabilidade frente a ``ref``.
+    """
+
+    X_norm = ref.X_norm if X_norm is None else X_norm
+    atributos = ref.atributos_por_estado if atributos is None else atributos
+    config.validar_perfis(perfis)
+
+    scores = stage1.compute_profile_scores(X_norm, perfis)
+    adm = admissibility.conjuntos_admissiveis(ref.designs, atributos, perfis, globais)
+    pi = {p.sigla: p.peso_pi for p in perfis}
+
+    tamanhos = {f"n_F_{s}": int(adm.chi[s].sum()) for s in adm.siglas}
     tamanhos["n_intersecao"] = int(adm.intersecao.sum())
     try:
         resultado = anp.run_anp(
@@ -274,7 +315,7 @@ def _avaliar_anp_com_restricoes(
         return {
             **tamanhos,
             "sintese_definida": False,
-            "perfis_excluidos": ",".join(config.PERFIS),
+            "perfis_excluidos": ",".join(adm.siglas),
             "d_star": None,
             "d_star_inadmissivel_em": None,
             **_metricas_indefinidas(),
@@ -285,67 +326,73 @@ def _avaliar_anp_com_restricoes(
         **tamanhos,
         "sintese_definida": True,
         "perfis_excluidos": ",".join(resultado.perfis_excluidos),
-        "d_star": d_star,
+        "d_star": ref.design_ids[d_star],
         "d_star_inadmissivel_em": ",".join(adm.perfis_inadmissiveis(d_star)),
         **metricas_estabilidade(ref.g, resultado.g),
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 5. Variação das restrições de admissibilidade (FS_p e rho_p)
+# 5. Variação das restrições de admissibilidade (FS_p, rho_p, referência do custo)
 # ─────────────────────────────────────────────────────────────────────────
-def sweep_restricoes(
-    ref: Result,
+def cenarios_restricoes(
+    perfis_ref: tuple[config.Perfil, ...],
+    globais_ref: config.ConfigGlobal,
     fs_valores: tuple[float, ...] = (1.15, 1.25, 1.40),
     rho_valores: tuple[float, ...] = (1.05, 1.15, 1.25, 1.50, math.inf),
-) -> pd.DataFrame:
-    """Varia ``FS_p`` e ``rho_p`` um perfil por vez, mais o caso sem restrições.
+    referencias_custo: tuple[str, ...] = config.REFERENCIAS_CUSTO,
+) -> list[dict]:
+    """Lista de cenários da varredura de restrições; cada um é uma lista de perfis.
 
-    Cada linha altera um único parâmetro de um único perfil, com os demais na
-    referência (``tipo`` = ``"FS"`` ou ``"rho"``). A linha
-    ``tipo="sem_restricoes"`` usa ``FS_p = 1`` e ``rho_p = inf`` para todos os
-    perfis (``pcmax <= p_lim`` do modelo original continua valendo): é a
-    formulação em que os perfis diferem só pela regra de decisão. Payoff e
-    pontuações $v^{(p)}$ são os da referência; só $\\mathcal{F}^{(p)}$ muda.
-
-    Enquanto ``b_cer`` não estiver definido, o teto de custo não é aplicado e
-    as linhas de ``rho`` reproduzem a referência (``teto_custo_aplicado=False``).
+    Um parâmetro de um perfil por vez (demais na referência): ``FS`` e
+    ``rho``; a referência do índice de custo (parâmetro global); e o caso
+    ``sem_restricoes`` (``FS = 1`` e ``rho = inf`` para todos).
     """
 
-    fs_ref = dict(zip(config.PERFIS, ref.cfg.fs_perfis))
-    rho_ref = dict(zip(config.PERFIS, ref.cfg.rho_perfis))
-
-    cenarios: list[tuple[str, str | None, float | None, dict[str, float], dict[str, float]]] = []
-    for p in config.PERFIS:
+    cenarios = []
+    for perfil in perfis_ref:
         for fs in fs_valores:
-            cenarios.append(("FS", p, fs, {**fs_ref, p: fs}, rho_ref))
-    for p in config.PERFIS:
+            cenarios.append(
+                dict(tipo="FS", perfil_variado=perfil.sigla, valor=fs, globais=globais_ref,
+                     perfis=config.substituir_perfil(perfis_ref, perfil.sigla, FS=fs))
+            )
+    for perfil in perfis_ref:
         for rho in rho_valores:
-            cenarios.append(("rho", p, rho, fs_ref, {**rho_ref, p: rho}))
+            cenarios.append(
+                dict(tipo="rho", perfil_variado=perfil.sigla, valor=rho, globais=globais_ref,
+                     perfis=config.substituir_perfil(perfis_ref, perfil.sigla, rho=rho))
+            )
+    for referencia in referencias_custo:
+        cenarios.append(
+            dict(tipo="referencia_custo", perfil_variado=None, valor=referencia, perfis=perfis_ref,
+                 globais=replace(globais_ref, referencia_custo=referencia))
+        )
     cenarios.append(
-        ("sem_restricoes", None, None, {p: 1.0 for p in config.PERFIS}, {p: math.inf for p in config.PERFIS})
+        dict(tipo="sem_restricoes", perfil_variado=None, valor=None, globais=globais_ref,
+             perfis=config.perfis_sem_restricoes(perfis_ref))
     )
+    return cenarios
+
+
+def sweep_restricoes(ref: Result, **kwargs) -> pd.DataFrame:
+    """Avalia cada cenário de :func:`cenarios_restricoes` com :func:`avaliar_cenario`.
+
+    Payoff e normalização são os da referência; só os perfis (e, no eixo
+    ``referencia_custo``, os parâmetros globais) mudam. ``kwargs`` repassa os
+    valores varridos a :func:`cenarios_restricoes`.
+    """
 
     linhas = []
-    for tipo, perfil, valor, fs, rho in cenarios:
-        adm = admissibility.conjuntos_admissiveis(
-            ref.designs,
-            ref.atributos_por_estado,
-            tuple(fs[p] for p in config.PERFIS),
-            tuple(rho[p] for p in config.PERFIS),
-            ref.cfg.b_cer,
-            ref.cfg.p_lim,
-        )
+    for cen in cenarios_restricoes(ref.cfg.perfis, ref.cfg.globais, **kwargs):
         linhas.append(
             {
-                "tipo": tipo,
-                "perfil_variado": perfil,
-                "valor": valor,
-                "teto_custo_aplicado": ref.cfg.b_cer is not None,
-                **_avaliar_anp_com_restricoes(ref, ref.scores, adm),
+                "tipo": cen["tipo"],
+                "perfil_variado": cen["perfil_variado"],
+                "valor": cen["valor"],
+                "referencia_custo": cen["globais"].referencia_custo,
+                **avaliar_cenario(ref, cen["perfis"], cen["globais"]),
             }
         )
-
     return pd.DataFrame(linhas)
 
 
@@ -356,5 +403,7 @@ __all__ = [
     "sweep_pi",
     "sweep_anp",
     "sweep_lambda",
+    "avaliar_cenario",
+    "cenarios_restricoes",
     "sweep_restricoes",
 ]

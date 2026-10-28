@@ -31,8 +31,15 @@ cd tg_robust
 python run_pipeline.py --stage 1 --out resultados_estagio1 --seed 0
 python run_pipeline.py --stage 2 --out resultados_estagio2 --seed 0
 
-# com dados reais (quando disponíveis), mesmo layout de colunas:
-python run_pipeline.py --stage 1 --csv /caminho/para/pareto_estagio_1.csv --out resultados_estagio1
+# fronts de TESTE (gerador_pareto/, modelo simplificado — não usar no Cap. 4),
+# reexecutando a balística (habilita a varredura de λ):
+python run_pipeline.py --stage 2 --csv ../gerador_pareto/dados/pareto_estagio2.csv \
+    --balistica ../gerador_pareto/balistica.py --out resultados_teste2
+
+# opções das restrições de admissibilidade:
+#   --referencia-custo {mediana,minimo}   (padrão: mediana)
+#   --b-cer B                             (padrão: 1.0 PROVISÓRIO, com aviso)
+#   --sem-teto-custo                      (rho = inf em todos os perfis)
 ```
 
 Sem `--csv`, o pipeline usa **dados sintéticos** (`tg_robust/data.py:synthetic_designs`),
@@ -47,29 +54,36 @@ explicitamente marcados como tal (aviso no terminal, coluna `sintetico` e
 | `ranking_final.csv` | Top-50 por $g$, com $g, g_W, g_S, g_H, V_W, V_S, V_H$ e rank do baseline AHP |
 | `criterion_weights.csv` | $q_0$ (a priori) vs. $q$ (efetivo, pós-dependência interna) |
 | `consistency.csv` | CR por coluna de julgamento de $W_{TT}$ |
-| `sens_alpha.csv`, `sens_pi.csv`, `sens_anp.csv`, `sens_lambda.csv` | As 4 varreduras de sensibilidade |
-| `run_config.json` | Configuração completa, semente, flag de dados sintéticos, hash SHA-256 do CSV de entrada (se houver) |
+| `sens_alpha.csv`, `sens_pi.csv`, `sens_anp.csv`, `sens_lambda.csv`, `sens_restricoes.csv` | As 5 varreduras de sensibilidade (`sens_lambda.csv` fica vazio se não houver modelo de balística que reexecute os estados) |
+| `admissibilidade.csv` | Por design: `pcmax` em θ1 e máximo entre estados, base e índice de custo $c_k$, e as máscaras de pressão, custo e $\mathcal{F}^{(p)}$ |
+| `admissibilidade_resumo.csv` | Tamanho de $\mathcal{F}^{(p)}$, exclusões só por pressão / só por custo / por ambos, e a interseção |
+| `vencedores_por_perfil.csv` | argmax de $V^{(p)}$ com e sem restrições |
+| `run_config.json` | Configuração completa (perfis, parâmetros globais), semente, modelo de balística, correlação $c_k \times p_{c,\max}(\theta_1)$, perfis em que $d^*$ é inadmissível, hash SHA-256 do CSV |
+
+## Restrições de admissibilidade por perfil (Seção 3.3.4)
+
+Cada perfil é um `config.Perfil` (regra de decisão, α, FS, teto de custo ρ,
+peso π); os parâmetros globais ficam em `config.ConfigGlobal` (p_lim = 16 MPa,
+expoente `b` da CER — **1,0 provisório**, com aviso —, referência do custo
+`mediana`/`minimo`). O pipeline e a sensibilidade tratam qualquer lista de
+perfis da mesma forma. As restrições atuam só no argmax de $V^{(p)}$ e no
+bloco $W_{AT}^{(p)}$; `rho = inf` retira o teto de custo.
 
 ## Onde plugar os dados reais
 
-1. Gere/exporte os designs Pareto de Nascimento et al. (2022) em CSV com as
-   colunas `Mp, tb, It, F, rhoIsp, pcmax, eta` (aliases como `F_med`,
-   `rho_Isp`, `pc_med`, `eta_v` — usados em `../data/pareto_estagio_*.csv` —
-   são aceitos automaticamente, ver `data.ALIASES`).
-2. Inclua a coluna `propelente` (tipo 1-4, Tabela 6 do artigo) ou `nexp`
-   (expoente da lei de queima); sem nenhuma das duas, o pipeline usa
-   `n=0,31` para todos os designs e emite um aviso.
-3. Rode com `--csv caminho.csv`.
+Os arquivos `../data/pareto_estagio_*.csv` são da metodologia anterior e
+**não devem ser usados**. Os dados reais de Nascimento et al. (2022) precisam
+trazer, por design:
 
-> **Nota sobre `../data/pareto_estagio_1.csv` e `pareto_estagio_2.csv`:**
-> esses arquivos já existem em `TG/data/` (632 e 1089 linhas — mesma
-> contagem do artigo) e foram lidos apenas para verificação dos aliases de
-> coluna, **não foram usados nem copiados para dentro deste pacote**. Mais
-> de 85% das linhas de `pareto_estagio_1.csv` violam a restrição `eta>=0,8`
-> do artigo, então aparentam ser dados de desenvolvimento do protótipo
-> antigo, não o *front* de Pareto real validado. Confirme a procedência
-> antes de usá-los como entrada real (ver "Decisões em aberto" no relatório
-> final da sessão).
+1. os 7 critérios por estado, em colunas `<criterio>_theta{1,2,3}`
+   (`tb`, `It`, `F`, `rho_isp`, `pcmax`) mais `Mp` e `eta_v` — mesmo
+   formato de `../gerador_pareto/dados/` —, **ou** só os valores nominais e um
+   modelo de balística (`--balistica`) para calcular os estados;
+2. `Rc` e `Lt` (raio e comprimento do grão; a unidade se cancela no índice de
+   custo) — sem eles, `load_designs` recusa o arquivo;
+3. `propelente` (tipo 1-4) ou `nexp`.
+
+`pc_med` (pressão média) **não** é aceito no lugar de `pcmax`.
 
 ## Onde plugar o modelo real de balística interna
 
@@ -90,10 +104,19 @@ Natureza" do `.tex`) e passe-a ao pipeline:
 resultado = pipeline.run(cfg, designs, model=ModeloRealDeBalistica())
 ```
 
-Na ausência do modelo real (scripts do orientador), o pipeline usa por
-padrão `SurrogateBallistics`, que aplica diretamente as identidades
-analíticas da Seção 3.3.1 (ver docstring do módulo) — este é o "FALLBACK"
-mencionado no `.tex`.
+Um simulador por design no formato `simular(x, k_cstar, k_cf) -> dict` (como
+`../gerador_pareto/balistica.py`) é adaptado por `scenarios.AdaptadorSimulador`
+(`--balistica arquivo.py` no CLI). Se os estados vêm prontos no CSV e nenhum
+modelo é fornecido, usa-se `scenarios.EstadosPrecomputados` e a varredura de λ
+é pulada com aviso. Sem CSV por estado nem modelo, o pipeline usa
+`SurrogateBallistics`, que aplica as identidades analíticas da Seção 3.3.1 —
+o "FALLBACK" mencionado no `.tex`.
+
+## Regressão contra a versão anterior às restrições
+
+`tests/test_regressao.py` compara, com FS = 1 e ρ = ∞, os resultados atuais com
+os da versão anterior (igualdade exata). Aponte a variável `TG_ROBUST_ANTES`
+para a raiz dessa versão: `TG_ROBUST_ANTES=/caminho/tg_robust_antes python -m pytest tests/test_regressao.py`.
 
 ## Arquitetura
 
@@ -108,7 +131,8 @@ tg_robust/
     anp.py          # W_AT, limite fechado (solve), limite por potências (verificação), síntese
     pipeline.py      # run(cfg, designs, model) -> Result
     baseline.py     # AHP de pesos iguais (aproximação, 5 objetivos, estado nominal)
-    sensitivity.py  # 4 varreduras (alpha, pi, ANP/gamma, lambda) + métricas de estabilidade
+    admissibility.py # restrições por perfil (FS, teto de custo), F^(p) e resumo
+    sensitivity.py  # 5 varreduras (alpha, pi, ANP/gamma, lambda, restrições) + estabilidade
   run_pipeline.py   # CLI
   tests/            # pytest (69 testes + 1 xfail)
 ```

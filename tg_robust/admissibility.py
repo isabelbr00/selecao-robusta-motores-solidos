@@ -1,21 +1,19 @@
 """Restrições de admissibilidade por perfil organizacional (Seção 3.3.4).
 
 Implementa a seção "Restrições de Admissibilidade por Perfil Organizacional"
-de ``TG_revisao_FS_custo.tex``. Cada perfil ``p`` impõe dois **limiares** (não
-critérios pontuados) que definem o conjunto admissível $\\mathcal{F}^{(p)}$:
+de ``TG_revisao_FS_custo.tex``. Cada perfil ``p`` (:class:`config.Perfil`)
+impõe dois **limiares** (não critérios pontuados) que definem o conjunto
+admissível $\\mathcal{F}^{(p)}$:
 
 * margem de segurança estrutural (Eq. "fs_restricao"):
-  ``FS_p * max_j pcmax(d_k, theta_j) <= p_lim``;
-* teto de custo relativo (Eq. "custo_relativo"): ``c_k <= rho_p``, com
-  ``c_k = [pcmax(d_k, theta_1) Rc_k^2 Lt_k / min_d pcmax(d, theta_1) Rc_d^2 Lt_d]^b``.
-  O mínimo é tomado sobre **todos** os designs do estágio, e só o estado
-  nominal é usado (o envelope é dimensionado uma única vez). ``c_k`` não
-  depende do perfil.
-
-Enquanto o expoente ``b`` da CER não for definido (``b=None``), ``c_k`` fica
-``NaN`` e o teto de custo não é aplicado (ver
-:func:`tg_robust.config.aviso_b_cer_ausente`). A razão de massa do envelope
-(a base de ``c_k``, sem o expoente) é sempre calculada e reportada.
+  ``FS_p * max_j pcmax(d_k, theta_j) <= p_lim`` — máximo sobre os TRÊS estados;
+* teto de custo relativo: ``c_k <= rho_p``, com
+  ``c_k = (base_k / ref)^b``, ``base_k = pcmax(d_k, theta_1) Rc_k^2 Lt_k`` e
+  ``ref`` = mediana (padrão) ou mínimo de ``base_d`` sobre **todos** os
+  designs do estágio. A opção "mediana" diverge do .tex (que usa o mínimo):
+  com o mínimo, os tetos eliminam 80–99% dos designs nos fronts de teste.
+  Só o estado nominal entra no custo (o envelope é dimensionado uma vez).
+  ``c_k`` não depende do perfil; ``rho_p = inf`` retira o teto de custo.
 
 Nada aqui altera o payoff, a normalização ou as pontuações $v^{(p)}_{k,r}$:
 as máscaras são consumidas apenas pelo argmax de $V^{(p)}$ e pelo bloco
@@ -25,6 +23,7 @@ $W^{(p)}_{AT}$ do ANP.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -36,24 +35,34 @@ from . import config
 class Admissibilidade:
     """Conjuntos admissíveis $\\mathcal{F}^{(p)}$ e as grandezas que os definem."""
 
+    siglas: tuple[str, ...]
     pcmax_max: np.ndarray  # max_j pcmax(d_k, theta_j), shape (n,)
-    razao_massa: np.ndarray  # pcmax(θ1) Rc² Lt / min_d(...), shape (n,), >= 1
-    c: np.ndarray  # índice de custo c_k = razao_massa**b, shape (n,); NaN se b=None
-    b_cer: float | None
-    adm_pressao: dict[str, np.ndarray]  # bool (n,) por perfil
-    adm_custo: dict[str, np.ndarray]  # bool (n,) por perfil
-    chi: dict[str, np.ndarray]  # bool (n,) por perfil: d_k em F^(p)
+    pcmax_nominal: np.ndarray  # pcmax(d_k, theta_1), shape (n,)
+    base_custo: np.ndarray  # pcmax(θ1) Rc² Lt (unidades do dado), shape (n,)
+    c: np.ndarray  # índice de custo c_k, shape (n,)
+    globais: config.ConfigGlobal
+    adm_pressao: dict[str, np.ndarray]  # bool (n,) por sigla
+    adm_custo: dict[str, np.ndarray]  # bool (n,) por sigla
+    chi: dict[str, np.ndarray]  # bool (n,) por sigla: d_k em F^(p)
 
     @property
     def intersecao(self) -> np.ndarray:
         """Máscara dos designs admissíveis para todos os perfis simultaneamente."""
 
-        return np.logical_and.reduce([self.chi[p] for p in config.PERFIS])
+        return np.logical_and.reduce([self.chi[s] for s in self.siglas])
 
     def perfis_inadmissiveis(self, k: int) -> list[str]:
-        """Perfis para os quais o design de posição ``k`` é inadmissível."""
+        """Siglas dos perfis para os quais o design de posição ``k`` é inadmissível."""
 
-        return [p for p in config.PERFIS if not self.chi[p][k]]
+        return [s for s in self.siglas if not self.chi[s][k]]
+
+    @property
+    def correlacao_custo_pressao(self) -> float:
+        """Correlação de Pearson entre ``c_k`` e ``pcmax(theta_1)`` (acompanhamento)."""
+
+        if np.ptp(self.c) == 0.0 or np.ptp(self.pcmax_nominal) == 0.0:
+            return float("nan")
+        return float(np.corrcoef(self.c, self.pcmax_nominal)[0, 1])
 
 
 def pressao_maxima_entre_estados(atributos_por_estado: dict[str, dict[str, np.ndarray]]) -> np.ndarray:
@@ -64,36 +73,38 @@ def pressao_maxima_entre_estados(atributos_por_estado: dict[str, dict[str, np.nd
     )
 
 
-def razao_massa_envelope(pcmax_nominal: np.ndarray, Rc: np.ndarray, Lt: np.ndarray) -> np.ndarray:
-    """Base do índice de custo: $p_{c,\\max}(\\theta_1) R^2 L$ relativo ao mínimo do estágio.
+def base_custo_envelope(pcmax_nominal: np.ndarray, Rc: np.ndarray, Lt: np.ndarray) -> np.ndarray:
+    """$p_{c,\\max}(\\theta_1) R^2 L$, proporcional à massa do envelope (Eq. "massa_envelope").
 
-    Proporcional à massa do envelope cilíndrico de parede fina
-    (Eq. "massa_envelope"); FS, material e o coeficiente da CER cancelam-se.
+    FS, material e o coeficiente da CER cancelam-se na razão de
+    :func:`indice_custo`, assim como as unidades de ``Rc`` e ``Lt``.
     """
 
-    produto = np.asarray(pcmax_nominal, dtype=float) * np.asarray(Rc, dtype=float) ** 2 * np.asarray(Lt, dtype=float)
-    if not (np.isfinite(produto).all() and (produto > 0.0).all()):
+    base = np.asarray(pcmax_nominal, dtype=float) * np.asarray(Rc, dtype=float) ** 2 * np.asarray(Lt, dtype=float)
+    if not (np.isfinite(base).all() and (base > 0.0).all()):
         raise ValueError("pcmax(θ1)·Rc²·Lt deve ser positivo e finito para todos os designs")
-    return produto / produto.min()
+    return base
 
 
-def indice_custo(razao_massa: np.ndarray, b: float | None) -> np.ndarray:
-    """$c_k = (\\text{razão de massa})^b$; devolve ``NaN`` enquanto ``b`` não estiver definido."""
+def indice_custo(base: np.ndarray, b: float, referencia: str) -> np.ndarray:
+    """$c_k = (base_k / ref)^b$, com ``ref`` = mediana ou mínimo sobre todos os designs."""
 
-    if b is None:
-        return np.full_like(razao_massa, np.nan, dtype=float)
-    return razao_massa**b
+    if referencia == "mediana":
+        ref = np.median(base)
+    elif referencia == "minimo":
+        ref = np.min(base)
+    else:
+        raise ValueError(f"referencia_custo deve ser uma de {config.REFERENCIAS_CUSTO}")
+    return (base / ref) ** b
 
 
 def conjuntos_admissiveis(
     designs: pd.DataFrame,
     atributos_por_estado: dict[str, dict[str, np.ndarray]],
-    fs_perfis: tuple[float, float, float],
-    rho_perfis: tuple[float, float, float],
-    b_cer: float | None,
-    p_lim: float = config.P_LIM_REF,
+    perfis: Sequence[config.Perfil],
+    globais: config.ConfigGlobal,
 ) -> Admissibilidade:
-    """Calcula $\\mathcal{F}^{(p)}$ para os três perfis (Eq. "conjunto_viavel").
+    """Calcula $\\mathcal{F}^{(p)}$ para cada perfil da lista (Eq. "conjunto_viavel").
 
     ``atributos_por_estado`` é a saída de
     :func:`tg_robust.scenarios.propagate_states` (``pcmax`` por estado vem do
@@ -101,26 +112,28 @@ def conjuntos_admissiveis(
     """
 
     pcmax_max = pressao_maxima_entre_estados(atributos_por_estado)
-    pcmax_nominal = atributos_por_estado[config.ESTADOS_NOMES[0]]["pcmax"]
-    razao = razao_massa_envelope(pcmax_nominal, designs["Rc"].to_numpy(), designs["Lt"].to_numpy())
+    pcmax_nominal = np.asarray(atributos_por_estado[config.ESTADOS_NOMES[0]]["pcmax"], dtype=float)
+    base = base_custo_envelope(pcmax_nominal, designs["Rc"].to_numpy(), designs["Lt"].to_numpy())
 
-    if b_cer is None:
-        config.aviso_b_cer_ausente()
-    c = indice_custo(razao, b_cer)
+    if globais.b_provisorio:
+        config.aviso_b_cer_provisorio()
+    c = indice_custo(base, globais.b_cer, globais.referencia_custo)
 
     adm_pressao: dict[str, np.ndarray] = {}
     adm_custo: dict[str, np.ndarray] = {}
     chi: dict[str, np.ndarray] = {}
-    for p, fs, rho in zip(config.PERFIS, fs_perfis, rho_perfis):
-        adm_pressao[p] = fs * pcmax_max <= p_lim
-        adm_custo[p] = np.ones_like(adm_pressao[p]) if b_cer is None else c <= rho
-        chi[p] = adm_pressao[p] & adm_custo[p]
+    for perfil in perfis:
+        adm_pressao[perfil.sigla] = perfil.FS * pcmax_max <= globais.p_lim
+        adm_custo[perfil.sigla] = c <= perfil.rho  # rho = inf: sempre verdadeiro
+        chi[perfil.sigla] = adm_pressao[perfil.sigla] & adm_custo[perfil.sigla]
 
     return Admissibilidade(
+        siglas=tuple(p.sigla for p in perfis),
         pcmax_max=pcmax_max,
-        razao_massa=razao,
+        pcmax_nominal=pcmax_nominal,
+        base_custo=base,
         c=c,
-        b_cer=b_cer,
+        globais=globais,
         adm_pressao=adm_pressao,
         adm_custo=adm_custo,
         chi=chi,
@@ -132,19 +145,19 @@ def resumo(adm: Admissibilidade) -> pd.DataFrame:
 
     Colunas: ``n_designs``, ``n_admissiveis``, ``excluidos_so_pressao``,
     ``excluidos_so_custo``, ``excluidos_ambos``. Uma linha extra
-    ``intersecao`` traz o tamanho de $\\mathcal{F}^{(W)} \\cap \\mathcal{F}^{(S)} \\cap \\mathcal{F}^{(H)}$.
+    ``intersecao`` traz o tamanho da interseção de todos os $\\mathcal{F}^{(p)}$.
     """
 
     n = len(adm.pcmax_max)
     linhas = []
-    for p in config.PERFIS:
-        falha_p = ~adm.adm_pressao[p]
-        falha_c = ~adm.adm_custo[p]
+    for s in adm.siglas:
+        falha_p = ~adm.adm_pressao[s]
+        falha_c = ~adm.adm_custo[s]
         linhas.append(
             {
-                "perfil": p,
+                "perfil": s,
                 "n_designs": n,
-                "n_admissiveis": int(adm.chi[p].sum()),
+                "n_admissiveis": int(adm.chi[s].sum()),
                 "excluidos_so_pressao": int((falha_p & ~falha_c).sum()),
                 "excluidos_so_custo": int((falha_c & ~falha_p).sum()),
                 "excluidos_ambos": int((falha_p & falha_c).sum()),
@@ -155,18 +168,20 @@ def resumo(adm: Admissibilidade) -> pd.DataFrame:
             "perfil": "intersecao",
             "n_designs": n,
             "n_admissiveis": int(adm.intersecao.sum()),
-            "excluidos_so_pressao": None,
-            "excluidos_so_custo": None,
-            "excluidos_ambos": None,
+            "excluidos_so_pressao": pd.NA,
+            "excluidos_so_custo": pd.NA,
+            "excluidos_ambos": pd.NA,
         }
     )
-    return pd.DataFrame(linhas)
+    return pd.DataFrame(linhas).astype(
+        {"excluidos_so_pressao": "Int64", "excluidos_so_custo": "Int64", "excluidos_ambos": "Int64"}
+    )
 
 
 __all__ = [
     "Admissibilidade",
     "pressao_maxima_entre_estados",
-    "razao_massa_envelope",
+    "base_custo_envelope",
     "indice_custo",
     "conjuntos_admissiveis",
     "resumo",
