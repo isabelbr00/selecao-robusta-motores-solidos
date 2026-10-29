@@ -261,6 +261,7 @@ def main(argv: list[str] | None = None) -> None:
         "stage": args.stage,
         "seed": args.seed,
         "n_designs": len(designs),
+        "n_duplicatas_removidas": designs.attrs.get("n_duplicatas_removidas"),
         "dados_sinteticos": dados_sinteticos,
         "csv_path": args.csv,
         "csv_sha256": csv_hash,

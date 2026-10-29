@@ -31,6 +31,14 @@ cd tg_robust
 python run_pipeline.py --stage 1 --out resultados_estagio1 --seed 0
 python run_pipeline.py --stage 2 --out resultados_estagio2 --seed 0
 
+# dados reais do artigo (1º estágio, tabela do modeFRONTIER) e figuras do Cap. 4
+# (um painel por figura; --dados2/--resultados2 acrescentam o 2º estágio):
+python run_pipeline.py --stage 1 \
+    --csv "../data/modeFrontier 1st Stage Us Propellants Designs Table.csv" --out resultados_estagio1
+python gerar_figuras_cap4.py \
+    --dados1 "../data/modeFrontier 1st Stage Us Propellants Designs Table.csv" \
+    --resultados1 resultados_estagio1 --out figuras_cap4
+
 # fronts de TESTE (gerador_pareto/, modelo simplificado — não usar no Cap. 4),
 # reexecutando a balística (habilita a varredura de λ):
 python run_pipeline.py --stage 2 --csv ../gerador_pareto/dados/pareto_estagio2.csv \

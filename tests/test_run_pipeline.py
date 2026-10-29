@@ -108,3 +108,25 @@ def test_cli_front_de_teste_com_balistica_executa_lambda(tmp_path):
 def test_cli_sem_teto_custo_gera_json_estrito(tmp_path):
     _, cfg, _ = _rodar(tmp_path, "--stage", "1", "--seed", "0", "--sem-teto-custo")
     assert all(p["rho"] == "inf" for p in cfg["config"]["perfis"])
+
+
+CSV_REAL_1 = RAIZ.parent / "data" / "modeFrontier 1st Stage Us Propellants Designs Table.csv"
+
+
+@pytest.mark.skipif(not CSV_REAL_1.exists(), reason="tabela real do 1º estágio não disponível")
+def test_cli_dados_reais_um_estagio_e_figuras(tmp_path):
+    out_dir, cfg, _ = _rodar(tmp_path, "--stage", "1", "--csv", str(CSV_REAL_1))
+    assert cfg["modelo_balistico"] == "EscalaQuaseEstacionaria"
+    assert cfg["sens_lambda_executada"] is True
+    assert cfg["n_designs"] == 437 and cfg["n_duplicatas_removidas"] == 195
+
+    figuras = tmp_path / "figuras"
+    resultado = subprocess.run(
+        [sys.executable, str(RAIZ / "gerar_figuras_cap4.py"), "--dados1", str(CSV_REAL_1),
+         "--resultados1", str(out_dir), "--out", str(figuras)],
+        capture_output=True, text=True, timeout=300,
+    )
+    assert resultado.returncode == 0, resultado.stderr
+    for nome in ("coord_paralelas", "custo_pressao", "top10_final", "sensibilidade"):
+        assert (figuras / f"{nome}.pdf").exists()
+    assert (pd.read_csv(figuras / "top5_final.csv")["estagio"] == 1).all()
