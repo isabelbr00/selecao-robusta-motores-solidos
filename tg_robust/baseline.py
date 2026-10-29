@@ -11,10 +11,10 @@ artigo original.
 Procedimento: benefício → normalização min-max → normalização por coluna
 (soma 1, como no bloco $W_{AT}$) → soma com pesos iguais → ranking.
 
-**Esta é apenas uma aproximação**, a ser calibrada contra a Tabela 7 do
-artigo de referência quando os dados reais e os resultados do AHP original
-estiverem disponíveis. Nenhum valor da Tabela 7 é codificado aqui — ver
-``tests/test_baseline.py`` para o teste ``xfail`` correspondente.
+**Esta é apenas uma aproximação.** Com os dados reais do 1º estágio (tabela
+do modeFRONTIER, 437 designs), ela escolhe o Id 5732 e põe o Id 5763 — o
+escolhido pelo AHP do artigo (Tabela 7) — em 4º lugar. Nenhum valor da
+Tabela 7 é codificado aqui; ver ``tests/test_baseline.py``.
 """
 
 from __future__ import annotations
