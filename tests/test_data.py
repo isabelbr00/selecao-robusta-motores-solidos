@@ -1,4 +1,5 @@
 import warnings
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -145,3 +146,54 @@ def test_hash_arquivo_deterministico(tmp_path):
     caminho = tmp_path / "f.csv"
     caminho.write_text("a,b\n1,2\n")
     assert data.hash_arquivo(caminho) == data.hash_arquivo(caminho)
+
+
+# ─── Tabela do modeFRONTIER (Nascimento et al., 2022) ────────────────────
+CSV_REAL_1 = Path(__file__).resolve().parents[2] / "data" / "modeFrontier 1st Stage Us Propellants Designs Table.csv"
+
+
+def _linha_modefrontier(Id, categoria="Pareto", E="false", Ea=10.0, **kw):
+    linha = {"Id": Id, "M": "false", "Category": categoria, "E": E, "V": "false", "Ea": Ea, "Pc": 50.0,
+             "propellant_type": 1.0, "Mp": 8000.0, "tb": 110.0, "ta": 118.0, "Total_Impulse_v": 2.3e7,
+             "Thrust_med_v": 2.1e5, "rho_x_Isp": 5.6e6, "Pc_max": 1.2e7, "Pc_med": 5.0e6, "eta_v": 0.98,
+             "rho": 1837.79, "cstar": 1588.0, "cf": 1.80}
+    linha.update(kw)
+    return linha
+
+
+def test_load_modefrontier_filtra_deduplica_e_converte(tmp_path):
+    linhas = [
+        _linha_modefrontier(7, Ea=1.0),
+        _linha_modefrontier(3, Ea=1.0, Mp=8100.0),  # duplicata de 7 pelas entradas; menor Id fica
+        _linha_modefrontier(4, Ea=2.0, categoria="MOGA2"),
+        _linha_modefrontier(5, Ea=3.0, E="true", Mp="#NAN"),
+        _linha_modefrontier(6, Ea=4.0, propellant_type=2.0),
+    ]
+    caminho = tmp_path / "mf.csv"
+    pd.DataFrame(linhas).to_csv(caminho, index=False)
+    assert data.e_formato_modefrontier(caminho)
+
+    df = data.load_designs(caminho)  # delega ao leitor do modeFRONTIER
+    assert list(df["design_id"]) == [3, 6]
+    assert df.attrs["n_duplicatas_removidas"] == 1
+    assert df.loc[0, "Mp"] == 8100.0
+    assert df.loc[0, "pcmax"] == pytest.approx(12.0) and df.loc[0, "pcmed"] == pytest.approx(5.0)
+    assert list(df["nexp"]) == [0.31, 0.30]
+    assert data.e_fonte_modefrontier(df)
+    for c in ("It", "F", "rhoIsp", "eta", "ta", "rho", "cstar", "cf"):
+        assert c in df.columns
+
+
+def test_load_modefrontier_recusa_valor_ausente(tmp_path):
+    caminho = tmp_path / "mf.csv"
+    pd.DataFrame([_linha_modefrontier(1, Pc_max="#NAN")]).to_csv(caminho, index=False)
+    with pytest.raises(ValueError, match="ausentes"):
+        data.load_modefrontier(caminho)
+
+
+@pytest.mark.skipif(not CSV_REAL_1.exists(), reason="tabela real do 1º estágio não disponível")
+def test_load_modefrontier_dados_reais_estagio_1():
+    df = data.load_designs(CSV_REAL_1)
+    assert len(df) == 437
+    assert df.attrs["n_duplicatas_removidas"] == 632 - 437
+    assert df["design_id"].is_unique

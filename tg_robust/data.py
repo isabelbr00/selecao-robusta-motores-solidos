@@ -1,7 +1,11 @@
 """Carregamento e geração de designs Pareto para a seleção robusta de motores.
 
-Duas fontes de dados são suportadas:
+Três fontes de dados são suportadas:
 
+* :func:`load_modefrontier` — lê a tabela de designs exportada pelo
+  modeFRONTIER em Nascimento et al. (2022) (dados reais do artigo; p.ex.
+  ``TG/data/modeFrontier 1st Stage Us Propellants Designs Table.csv``).
+  :func:`load_designs` reconhece esse formato pelo cabeçalho e o delega;
 * :func:`load_designs` — carrega um CSV real de designs Pareto (7 critérios
   + variáveis de projeto ``Rc``/``Lt`` do envelope) e valida as restrições
   de projeto do artigo de referência. Os arquivos ``TG/data/pareto_estagio_*.csv``
@@ -53,6 +57,34 @@ ALIASES: dict[str, str] = {
 COLUNA_PROPELENTE = "propelente"
 COLUNA_NEXP = "nexp"
 COLUNA_SINTETICO = "sintetico"
+COLUNA_FONTE = "fonte"
+
+# ─── Tabela de designs do modeFRONTIER (Nascimento et al., 2022) ──────────
+FONTE_MODEFRONTIER = "modeFrontier"
+NA_MODEFRONTIER = "#NAN"
+# Colunas que identificam o formato no cabeçalho
+ASSINATURA_MODEFRONTIER: tuple[str, ...] = ("Id", "Category", "E", "Ea", "propellant_type", "Total_Impulse_v")
+# Variáveis de entrada (de Ea até propellant_type, inclusive): chave das duplicatas
+PRIMEIRA_ENTRADA_MODEFRONTIER = "Ea"
+ULTIMA_ENTRADA_MODEFRONTIER = "propellant_type"
+# Coluna do modeFRONTIER -> nome canônico
+MAPA_MODEFRONTIER: dict[str, str] = {
+    "Mp": "Mp",
+    "tb": "tb",
+    "ta": "ta",
+    "Total_Impulse_v": "It",
+    "Thrust_med_v": "F",
+    "rho_x_Isp": "rhoIsp",
+    "Pc_max": "pcmax",
+    "Pc_med": "pcmed",
+    "eta_v": "eta",
+    "rho": "rho",
+    "cstar": "cstar",
+    "cf": "cf",
+    "propellant_type": COLUNA_PROPELENTE,
+}
+PA_PARA_MPA = 1e-6
+COLUNAS_EM_PA: tuple[str, ...] = ("pcmax", "pcmed")
 
 
 def _renomear_aliases(df: pd.DataFrame) -> pd.DataFrame:
@@ -185,6 +217,72 @@ def hash_arquivo(path: str | Path) -> str:
     return h.hexdigest()
 
 
+def e_formato_modefrontier(path: str | Path) -> bool:
+    """Verdadeiro se o cabeçalho do CSV é o da tabela de designs do modeFRONTIER."""
+
+    colunas = pd.read_csv(path, nrows=0).columns
+    return all(c in colunas for c in ASSINATURA_MODEFRONTIER)
+
+
+def e_fonte_modefrontier(df: pd.DataFrame) -> bool:
+    """Verdadeiro se ``df`` veio de :func:`load_modefrontier`."""
+
+    return COLUNA_FONTE in df.columns and bool((df[COLUNA_FONTE] == FONTE_MODEFRONTIER).all())
+
+
+def load_modefrontier(path: str | Path, *, levantar_erro_restricoes: bool = False) -> pd.DataFrame:
+    """Lê a tabela de designs do modeFRONTIER (Nascimento et al., 2022).
+
+    * ``#NAN`` é valor ausente;
+    * mantém só ``Category == "Pareto"`` e ``E == False`` (sem erro de avaliação);
+    * remove duplicatas pelas variáveis de entrada (de ``Ea`` até
+      ``propellant_type``), mantendo o menor ``Id``, e registra quantas saíram;
+    * renomeia por :data:`MAPA_MODEFRONTIER` e converte ``pcmax``/``pcmed`` de
+      Pa para MPa; ``Id`` vira ``design_id``.
+
+    Qualquer valor ausente nas colunas usadas levanta ``ValueError`` (nada é
+    preenchido). O número de duplicatas removidas fica em
+    ``df.attrs["n_duplicatas_removidas"]``.
+    """
+
+    path = Path(path)
+    bruto = pd.read_csv(path, na_values=[NA_MODEFRONTIER], keep_default_na=False)
+    faltantes = [c for c in (*ASSINATURA_MODEFRONTIER, *MAPA_MODEFRONTIER) if c not in bruto.columns]
+    if faltantes:
+        raise ValueError(f"{path}: colunas do modeFRONTIER ausentes: {faltantes}")
+
+    sem_erro = bruto["E"].astype(str).str.strip().str.lower() == "false"
+    pareto = bruto[(bruto["Category"] == "Pareto") & sem_erro]
+
+    colunas = list(bruto.columns)
+    entradas = colunas[colunas.index(PRIMEIRA_ENTRADA_MODEFRONTIER) : colunas.index(ULTIMA_ENTRADA_MODEFRONTIER) + 1]
+    unicos = pareto.sort_values("Id").drop_duplicates(subset=entradas, keep="first")
+    n_dup = len(pareto) - len(unicos)
+    logger.info(
+        "%s: %d designs Pareto sem erro; %d duplicata(s) pelas entradas (%s..%s) removida(s), "
+        "mantido o menor Id; restam %d.",
+        path.name, len(pareto), n_dup, entradas[0], entradas[-1], len(unicos),
+    )
+
+    df = unicos[["Id", *MAPA_MODEFRONTIER]].rename(columns={"Id": "design_id", **MAPA_MODEFRONTIER})
+    ausentes = df.columns[df.isna().any()].tolist()
+    if ausentes:
+        raise ValueError(f"{path}: valores ausentes (#NAN) nos designs Pareto, colunas {ausentes}")
+    for c in COLUNAS_EM_PA:
+        df[c] = df[c] * PA_PARA_MPA
+    df["design_id"] = df["design_id"].astype(int)
+    df[COLUNA_PROPELENTE] = df[COLUNA_PROPELENTE].astype(int)
+
+    df[COLUNA_NEXP] = resolver_nexp(df)
+    df[COLUNA_SINTETICO] = False
+    df[COLUNA_FONTE] = FONTE_MODEFRONTIER
+    validar_restricoes(df, levantar_erro=levantar_erro_restricoes)
+
+    df = df.reset_index(drop=True)
+    df.attrs["n_duplicatas_removidas"] = n_dup
+    return df
+
+
 def load_designs(path: str | Path, *, levantar_erro_restricoes: bool = False) -> pd.DataFrame:
     """Carrega um CSV real de designs Pareto.
 
@@ -197,10 +295,13 @@ def load_designs(path: str | Path, *, levantar_erro_restricoes: bool = False) ->
     ``propelente`` (tipo 1-4) ou ``nexp`` é usada para a propagação de
     cenários; na ausência de ambas, aplica-se o padrão com aviso (ver
     :func:`resolver_nexp`). As restrições de projeto são validadas via
-    :func:`validar_restricoes`.
+    :func:`validar_restricoes`. A tabela do modeFRONTIER é delegada a
+    :func:`load_modefrontier`.
     """
 
     path = Path(path)
+    if e_formato_modefrontier(path):
+        return load_modefrontier(path, levantar_erro_restricoes=levantar_erro_restricoes)
     df = pd.read_csv(path)
     df = _renomear_aliases(df)
     if tem_estados_precomputados(df):
@@ -305,6 +406,12 @@ __all__ = [
     "COLUNA_PROPELENTE",
     "COLUNA_NEXP",
     "COLUNA_SINTETICO",
+    "COLUNA_FONTE",
+    "FONTE_MODEFRONTIER",
+    "MAPA_MODEFRONTIER",
+    "e_formato_modefrontier",
+    "e_fonte_modefrontier",
+    "load_modefrontier",
     "tem_estados_precomputados",
     "resolver_nexp",
     "validar_restricoes",
