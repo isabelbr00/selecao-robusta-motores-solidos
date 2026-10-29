@@ -8,7 +8,10 @@ admissível $\\mathcal{F}^{(p)}$:
 * margem de segurança estrutural (Eq. "fs_restricao"):
   ``FS_p * max_j pcmax(d_k, theta_j) <= p_lim`` — máximo sobre os TRÊS estados;
 * teto de custo relativo: ``c_k <= rho_p``, com
-  ``c_k = (base_k / ref)^b``, ``base_k = pcmax(d_k, theta_1) Rc_k^2 Lt_k`` e
+  ``c_k = (base_k / ref)^b``, ``base_k = pcmax(d_k, theta_1) Vc_k`` e
+  ``Vc_k = Mp_k / (rho_k eta_k)`` (volume da câmara, quando os dados trazem a
+  densidade ``rho`` do propelente e ``eta``; caso contrário — fronts de
+  teste —, ``base_k = pcmax(d_k, theta_1) Rc_k^2 Lt_k``) e
   ``ref`` = mediana (padrão) ou mínimo de ``base_d`` sobre **todos** os
   designs do estágio. A opção "mediana" diverge do .tex (que usa o mínimo):
   com o mínimo, os tetos eliminam 80–99% dos designs nos fronts de teste.
@@ -38,7 +41,7 @@ class Admissibilidade:
     siglas: tuple[str, ...]
     pcmax_max: np.ndarray  # max_j pcmax(d_k, theta_j), shape (n,)
     pcmax_nominal: np.ndarray  # pcmax(d_k, theta_1), shape (n,)
-    base_custo: np.ndarray  # pcmax(θ1) Rc² Lt (unidades do dado), shape (n,)
+    base_custo: np.ndarray  # pcmax(θ1)·Vc ou pcmax(θ1)·Rc²·Lt (unidades do dado), shape (n,)
     c: np.ndarray  # índice de custo c_k, shape (n,)
     globais: config.ConfigGlobal
     adm_pressao: dict[str, np.ndarray]  # bool (n,) por sigla
@@ -86,6 +89,25 @@ def base_custo_envelope(pcmax_nominal: np.ndarray, Rc: np.ndarray, Lt: np.ndarra
     return base
 
 
+def base_custo_volume(pcmax_nominal: np.ndarray, Mp: np.ndarray, rho: np.ndarray, eta: np.ndarray) -> np.ndarray:
+    """$p_{c,\max}(\theta_1) V_c$, com $V_c = M_p / (\rho_p \eta_v)$ (volume da câmara)."""
+
+    Vc = np.asarray(Mp, dtype=float) / (np.asarray(rho, dtype=float) * np.asarray(eta, dtype=float))
+    base = np.asarray(pcmax_nominal, dtype=float) * Vc
+    if not (np.isfinite(base).all() and (base > 0.0).all()):
+        raise ValueError("pcmax(θ1)·Mp/(rho·eta) deve ser positivo e finito para todos os designs")
+    return base
+
+
+def base_custo(designs: pd.DataFrame, pcmax_nominal: np.ndarray) -> np.ndarray:
+    """Base do índice de custo: $p_{c,\max}(\theta_1) V_c$ se ``designs`` tem ``rho`` e
+    ``eta``; senão $p_{c,\max}(\theta_1) R_c^2 L_t$ (fronts de teste)."""
+
+    if "rho" in designs.columns and "eta" in designs.columns:
+        return base_custo_volume(pcmax_nominal, designs["Mp"].to_numpy(), designs["rho"].to_numpy(), designs["eta"].to_numpy())
+    return base_custo_envelope(pcmax_nominal, designs["Rc"].to_numpy(), designs["Lt"].to_numpy())
+
+
 def indice_custo(base: np.ndarray, b: float, referencia: str) -> np.ndarray:
     """$c_k = (base_k / ref)^b$, com ``ref`` = mediana ou mínimo sobre todos os designs."""
 
@@ -108,12 +130,13 @@ def conjuntos_admissiveis(
 
     ``atributos_por_estado`` é a saída de
     :func:`tg_robust.scenarios.propagate_states` (``pcmax`` por estado vem do
-    modelo de balística interna); ``designs`` fornece ``Rc`` e ``Lt``.
+    modelo de balística interna); ``designs`` fornece ``Mp``, ``rho`` e
+    ``eta`` (ou ``Rc`` e ``Lt``) para a base do custo (:func:`base_custo`).
     """
 
     pcmax_max = pressao_maxima_entre_estados(atributos_por_estado)
     pcmax_nominal = np.asarray(atributos_por_estado[config.ESTADOS_NOMES[0]]["pcmax"], dtype=float)
-    base = base_custo_envelope(pcmax_nominal, designs["Rc"].to_numpy(), designs["Lt"].to_numpy())
+    base = base_custo(designs, pcmax_nominal)
 
     if globais.b_provisorio:
         config.aviso_b_cer_provisorio()
@@ -182,6 +205,8 @@ __all__ = [
     "Admissibilidade",
     "pressao_maxima_entre_estados",
     "base_custo_envelope",
+    "base_custo_volume",
+    "base_custo",
     "indice_custo",
     "conjuntos_admissiveis",
     "resumo",

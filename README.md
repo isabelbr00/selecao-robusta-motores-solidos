@@ -69,6 +69,10 @@ expoente `b` da CER — **1,0 provisório**, com aviso —, referência do custo
 perfis da mesma forma. As restrições atuam só no bloco $W_{AT}^{(p)}$ e na
 escolha do vencedor de cada perfil; `rho = inf` retira o teto de custo.
 
+Base do índice de custo: $p_{c,\max}(\theta_1)\,V_c$, com
+$V_c = M_p/(\rho_p\,\eta_v)$, quando os dados trazem `rho` e `eta` (tabela do
+modeFRONTIER); nos fronts de teste (sem `rho`), $p_{c,\max}(\theta_1)\,R_c^2 L_t$.
+
 O **vencedor de cada perfil** é o argmax de $g^{(p)}$ (sub-rede ANP do perfil,
 a mesma que entra na síntese de $d^*$) restrito a $\mathcal{F}^{(p)}$.
 $V^{(p)}$ (média simples dos 7 critérios, pesos iguais) é mantido só como

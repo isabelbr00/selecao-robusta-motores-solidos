@@ -448,3 +448,18 @@ def test_F_vazio_vencedor_nenhum_e_tabela_nao_quebra(pipelines_sintetico):
     assert tabela.loc["W", "vencedor_anp_sem_restricoes"] != "nenhum"
     for s in "SH":
         assert tabela.loc[s, "vencedor_anp"] == res.design_ids[res.vencedor_perfil(s)]
+
+
+def test_base_custo_pelo_volume_da_camara_quando_ha_rho_e_eta(caso_manual):
+    _, atributos = caso_manual
+    # Vc = Mp/(rho·eta) = [1, 1, 2, 0.25]; base = pcmax(θ1)·Vc
+    designs = pd.DataFrame({"Mp": [1.0, 2.0, 4.0, 1.0], "rho": [1.0, 2.0, 2.0, 2.0], "eta": [1.0, 1.0, 1.0, 2.0],
+                            "Rc": [9.0] * 4, "Lt": [9.0] * 4})  # Rc/Lt ignorados quando há rho e eta
+    adm = admissibility.conjuntos_admissiveis(designs, atributos, PERFIS, config.ConfigGlobal())
+    np.testing.assert_allclose(adm.base_custo, [11.0, 11.5, 20.0, 3.25])
+
+
+def test_base_custo_sem_rho_usa_envelope(caso_manual):
+    designs, atributos = caso_manual
+    adm = admissibility.conjuntos_admissiveis(designs, atributos, PERFIS, config.ConfigGlobal())
+    np.testing.assert_allclose(adm.base_custo, [11.0, 11.5, 20.0, 3.25])
