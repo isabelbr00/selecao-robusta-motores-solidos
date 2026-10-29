@@ -60,3 +60,27 @@ def test_regiao_robustez_filtra_por_mesmo_d_star(resultado_pequeno):
     df = sensitivity.sweep_alpha(resultado_pequeno)
     regiao = sensitivity.regiao_robustez(df, "alpha")
     assert all(df.loc[df["alpha"].isin(regiao), "mesmo_d_star"])
+
+
+def test_sweep_residuo_referencia_reproduz_e_alternativa_reexecuta(resultado_pequeno):
+    import dataclasses
+
+    df = sensitivity.sweep_residuo(resultado_pequeno)
+    assert list(df["forma_residuo"]) == list(config.FORMAS_RESIDUO)
+    ref = df[df["referencia"]].iloc[0]
+    assert ref["forma_residuo"] == "quadrado"
+    assert ref["kendall_tau"] == pytest.approx(1.0) and bool(ref["mesmo_d_star"])
+
+    # a linha "absoluto" equivale a rodar o pipeline com forma_residuo="absoluto"
+    cfg_abs = dataclasses.replace(
+        resultado_pequeno.cfg, globais=dataclasses.replace(resultado_pequeno.cfg.globais, forma_residuo="absoluto")
+    )
+    r_abs = pipeline.run(cfg_abs, resultado_pequeno.designs)
+    alt = df[df["forma_residuo"] == "absoluto"].iloc[0]
+    assert alt["d_star"] == resultado_pequeno.design_ids[r_abs.d_star]
+    assert alt["kendall_tau"] == pytest.approx(sensitivity.metricas_estabilidade(resultado_pequeno.g, r_abs.g)["kendall_tau"])
+
+
+def test_forma_residuo_invalida():
+    with pytest.raises(ValueError):
+        config.ConfigGlobal(forma_residuo="cubo")

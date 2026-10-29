@@ -32,6 +32,7 @@ def test_cli_ponta_a_ponta_dados_sinteticos(tmp_path, stage):
         "sens_anp.csv",
         "sens_lambda.csv",
         "sens_restricoes.csv",
+        "sens_residuo.csv",
         "admissibilidade.csv",
         "admissibilidade_resumo.csv",
         "vencedores_por_perfil.csv",

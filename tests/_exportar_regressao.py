@@ -77,7 +77,12 @@ with open(arq_designs, "rb") as f:
 if versao == "antes":
     cfg = config.Config(estagio=estagio)
 else:
-    cfg = config.Config(estagio=estagio, perfis=config.perfis_sem_restricoes(config.PERFIS_REFERENCIA))
+    # a versão anterior usava -|δ| nos resíduos
+    cfg = config.Config(
+        estagio=estagio,
+        perfis=config.perfis_sem_restricoes(config.PERFIS_REFERENCIA),
+        globais=config.ConfigGlobal(forma_residuo="absoluto"),
+    )
 
 modelo = EstadosDasColunas() if modo_modelo == "estados" else SurrogateBallistics()
 res = pipeline.run(cfg, designs, model=modelo)

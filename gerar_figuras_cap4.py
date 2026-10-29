@@ -249,7 +249,12 @@ def _config_de_json(d: dict) -> config.Config:
         estagio=int(d["estagio"]),
         seed=int(d["seed"]),
         perfis=perfis,
-        globais=config.ConfigGlobal(p_lim=float(g["p_lim"]), b_cer=float(g["b_cer"]), referencia_custo=g["referencia_custo"]),
+        globais=config.ConfigGlobal(
+            p_lim=float(g["p_lim"]),
+            b_cer=float(g["b_cer"]),
+            referencia_custo=g["referencia_custo"],
+            forma_residuo=g.get("forma_residuo", "absoluto"),  # execuções anteriores à opção usavam -|δ|
+        ),
         gamma_anp=float(d["gamma_anp"]),
         kappa_c=tuple(float(k) for k in d["kappa_c"]),
         kappa_cf=tuple(float(k) for k in d["kappa_cf"]),
@@ -513,7 +518,7 @@ def _marcar_mudanca(ax, x, tau, muda) -> bool:
     return bool(muda.any())
 
 
-PARAMETROS_SENS = ("alpha", "pi", "gamma", "lambda", "FS", "rho")
+PARAMETROS_SENS = ("alpha", "pi", "gamma", "lambda", "FS", "rho", "residuo")
 TAU_PISO = 0.80  # limite inferior do eixo y, salvo se algum τ observado for menor
 
 
@@ -544,6 +549,12 @@ def casos_sensibilidade(e: Estagio, par: str) -> pd.DataFrame:
         if df is None or df.empty:
             raise DadoAusente("sens_lambda.csv vazio (varredura de λ pulada: sem modelo de balística que reexecute os estados)")
         valor = df["lambda"].astype(float).map(str)
+        perfil = ""
+    elif par == "residuo":
+        df = e.csv("sens_residuo.csv", obrigatorio=False)
+        if df is None or df.empty:
+            raise DadoAusente("sens_residuo.csv ausente (execução anterior à varredura da forma do resíduo)")
+        valor = df["forma_residuo"]
         perfil = ""
     else:
         df = e.csv("sens_restricoes.csv")
@@ -616,9 +627,10 @@ def limite_inferior_tau(estagios: list[Estagio]) -> float:
 def fig_sensibilidade(estagios: list[Estagio], avisos: list[str]):
     parametros = list(PARAMETROS_SENS)
     titulos = {"alpha": "$\\alpha$ (Hurwicz)", "pi": "$\\pi$ (pesos dos perfis)", "gamma": "$\\gamma$ (ANP)",
-               "lambda": "$\\lambda$ (magnitude dos estados)", "FS": "FS por perfil", "rho": "$\\rho$ por perfil"}
+               "lambda": "$\\lambda$ (magnitude dos estados)", "FS": "FS por perfil", "rho": "$\\rho$ por perfil",
+               "residuo": "forma do resíduo em $M_p$, $t_b$, $I_t$, $F$"}
     y_min = limite_inferior_tau(estagios)  # mesmo eixo y em todos os painéis
-    fig, eixos = plt.subplots(len(parametros), len(estagios), figsize=(largura(estagios), 13.0), squeeze=False)
+    fig, eixos = plt.subplots(len(parametros), len(estagios), figsize=(largura(estagios), 15.0), squeeze=False)
     algum_muda = False
     for c, e in enumerate(estagios):
         for l, par in enumerate(parametros):
@@ -692,6 +704,19 @@ def _painel_sensibilidade(ax, e: Estagio, par: str) -> bool:
         ax.axvline(1.0, color="0.5", ls=":")
         virgula(ax, "x")
         return _marcar_mudanca(ax, df["lambda"], df["kendall_tau"], ~df["mesmo_d_star"].astype(bool))
+
+    if par == "residuo":
+        df = e.csv("sens_residuo.csv", obrigatorio=False)
+        if df is None or df.empty:
+            raise DadoAusente("sens_residuo.csv ausente (execução anterior à varredura da forma do resíduo)")
+        x = np.arange(len(df))
+        ax.scatter(x, df["kendall_tau"], color="0.25", marker="o", s=25, zorder=3)
+        ref = df["referencia"].astype(bool).to_numpy()
+        for xi in x[ref]:
+            ax.axvline(xi, color="0.5", ls=":")
+        ax.set_xticks(x, [{"quadrado": "$-\\delta^2$", "absoluto": "$-|\\delta|$"}.get(f, f) for f in df["forma_residuo"]])
+        ax.set_xlim(-0.5, len(df) - 0.5)
+        return _marcar_mudanca(ax, x, df["kendall_tau"], ~df["mesmo_d_star"].astype(bool))
 
     # FS e rho: uma linha por perfil variado (demais na referência)
     df = e.csv("sens_restricoes.csv")

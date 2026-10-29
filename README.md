@@ -47,6 +47,7 @@ python run_pipeline.py --stage 2 --csv ../gerador_pareto/dados/pareto_estagio2.c
 # opções das restrições de admissibilidade:
 #   --referencia-custo {mediana,minimo}   (padrão: mediana)
 #   --b-cer B                             (padrão: 1.0 PROVISÓRIO, com aviso)
+#   --forma-residuo {quadrado,absoluto}   (benefício de Mp, tb, It, F: -δ² (padrão) ou -|δ|)
 #   --sem-teto-custo                      (rho = inf em todos os perfis)
 ```
 
@@ -61,7 +62,7 @@ explicitamente marcados como tal (aviso no terminal, coluna `sintetico` e
 | `scores_W.csv`, `scores_S.csv`, `scores_H.csv` | Pontuações $v^{(p)}_{k,r}$ por critério e, para comparação, $V^{(p)}$ (pesos iguais), por perfil |
 | `ranking_final.csv` | Top-50 por $g$, com $g, g_W, g_S, g_H, V_W, V_S, V_H$ e rank do baseline AHP |
 | `consistency.csv` | CR por coluna de julgamento de $W_{TT}$ |
-| `sens_alpha.csv`, `sens_pi.csv`, `sens_anp.csv`, `sens_lambda.csv`, `sens_restricoes.csv` | As 5 varreduras de sensibilidade (`sens_lambda.csv` fica vazio se não houver modelo de balística que reexecute os estados) |
+| `sens_alpha.csv`, `sens_pi.csv`, `sens_anp.csv`, `sens_lambda.csv`, `sens_restricoes.csv`, `sens_residuo.csv` | As 6 varreduras de sensibilidade (`sens_residuo.csv`: forma do resíduo, $-\delta^2$ ou $-|\delta|$) (`sens_lambda.csv` fica vazio se não houver modelo de balística que reexecute os estados) |
 | `admissibilidade.csv` | Por design: `pcmax` em θ1 e máximo entre estados, base e índice de custo $c_k$, e as máscaras de pressão, custo e $\mathcal{F}^{(p)}$ |
 | `admissibilidade_resumo.csv` | Tamanho de $\mathcal{F}^{(p)}$, exclusões só por pressão / só por custo / por ambos, e a interseção |
 | `vencedores_por_perfil.csv` | Por perfil: `vencedor_anp` (argmax de $g^{(p)}$ em $\mathcal{F}^{(p)}$, resultado principal), `vencedor_pesos_iguais` (argmax de $V^{(p)}$ em $\mathcal{F}^{(p)}$, comparação), `divergem`, e as mesmas três colunas sem restrições; "nenhum" se $\mathcal{F}^{(p)}$ for vazio |

@@ -26,11 +26,17 @@ from . import config
 from .scenarios import BallisticModel, propagate_states
 
 
-def beneficio(criterio: str, attrs: dict[str, np.ndarray], requisitos: config.Requisitos) -> np.ndarray:
+def beneficio(
+    criterio: str,
+    attrs: dict[str, np.ndarray],
+    requisitos: config.Requisitos,
+    forma_residuo: str = "quadrado",
+) -> np.ndarray:
     """Função de benefício $g_r$ de um critério, maior-é-melhor (Tabela "criterios_payoff").
 
-    * ``Mp``, ``tb``, ``It``, ``F``: resíduo relativo com sinal invertido,
-      ``g = -|f - f_req| / f_req``;
+    * ``Mp``, ``tb``, ``It``, ``F``: resíduo relativo ``δ = (f - f_req)/f_req``
+      com sinal invertido, ``g = -δ²`` (``forma_residuo="quadrado"``, Eq. 30
+      do artigo) ou ``g = -|δ|`` (``"absoluto"``);
     * ``rhoIsp``: maximizar, ``g = rhoIsp``;
     * ``pcmax``: minimizar, ``g = -pcmax``;
     * ``eta``: maximizar, ``g = eta``.
@@ -40,7 +46,12 @@ def beneficio(criterio: str, attrs: dict[str, np.ndarray], requisitos: config.Re
 
     if criterio in config.CRITERIOS_RESIDUO:
         f_req = getattr(requisitos, criterio)
-        return -np.abs(valores - f_req) / f_req
+        delta = (valores - f_req) / f_req
+        if forma_residuo == "quadrado":
+            return -(delta**2)
+        if forma_residuo == "absoluto":
+            return -np.abs(delta)
+        raise ValueError(f"forma_residuo deve ser uma de {config.FORMAS_RESIDUO}, recebido {forma_residuo!r}")
     if criterio in config.CRITERIOS_MAXIMIZAR:
         return valores
     if criterio in config.CRITERIOS_MINIMIZAR:
@@ -54,6 +65,7 @@ def build_payoff_tensor(
     kappa_c: tuple[float, float, float],
     kappa_cf: tuple[float, float, float],
     model: BallisticModel,
+    forma_residuo: str = "quadrado",
 ) -> tuple[np.ndarray, dict[str, dict[str, np.ndarray]]]:
     """Constrói o tensor de payoff bruto (não normalizado).
 
@@ -73,7 +85,7 @@ def build_payoff_tensor(
     for j, estado in enumerate(config.ESTADOS_NOMES):
         attrs = atributos_por_estado[estado]
         for r, criterio in enumerate(config.CRITERIOS):
-            X[r, :, j] = beneficio(criterio, attrs, requisitos)
+            X[r, :, j] = beneficio(criterio, attrs, requisitos, forma_residuo)
 
     return X, atributos_por_estado
 

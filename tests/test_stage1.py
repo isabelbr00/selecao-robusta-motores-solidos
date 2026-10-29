@@ -29,10 +29,12 @@ def tensor(designs_n_constante):
 
 def test_beneficio_residuo():
     req = config.REQUISITOS_ESTAGIO[1]
-    attrs = {"Mp": np.array([req.Mp, req.Mp * 1.1])}
-    g = stage1.beneficio("Mp", attrs, req)
-    assert g[0] == pytest.approx(0.0)
-    assert g[1] == pytest.approx(-0.1)
+    attrs = {"Mp": np.array([req.Mp, req.Mp * 1.1, req.Mp * 0.8])}
+    np.testing.assert_allclose(stage1.beneficio("Mp", attrs, req), [0.0, -0.01, -0.04], atol=1e-12)  # padrão: -δ²
+    np.testing.assert_allclose(stage1.beneficio("Mp", attrs, req, "quadrado"), [0.0, -0.01, -0.04], atol=1e-12)
+    np.testing.assert_allclose(stage1.beneficio("Mp", attrs, req, "absoluto"), [0.0, -0.1, -0.2], atol=1e-12)
+    with pytest.raises(ValueError):
+        stage1.beneficio("Mp", attrs, req, "cubo")
 
 
 def test_beneficio_maximizar_e_minimizar():

@@ -14,7 +14,9 @@ quando a varredura os altera):
    ``rho_p`` (item 5 da Seção 3.5 de ``TG_revisao_FS_custo.tex``), referência
    do índice de custo (mínimo/mediana) e o caso sem restrições
    (``FS=1``, ``rho=inf``). Cada cenário é uma lista de perfis
-   (:func:`cenarios_restricoes`), avaliada por :func:`avaliar_cenario`.
+   (:func:`cenarios_restricoes`), avaliada por :func:`avaliar_cenario`;
+6. :func:`sweep_residuo` — forma do resíduo no benefício de ``Mp``, ``tb``,
+   ``It`` e ``F`` (``-δ²`` ou ``-|δ|``; reexecuta o Estágio 1).
 
 A estabilidade de cada ranking perturbado frente ao de referência é medida
 por três indicadores (:func:`metricas_estabilidade`): manutenção de
@@ -268,7 +270,7 @@ def sweep_lambda(
         kappa_cf_novo = config.kappa_escalado(config.KAPPA_CF_REF, lam)
 
         X_novo, atributos_novo = stage1.build_payoff_tensor(
-            ref.designs, ref.cfg.requisitos, kappa_c_novo, kappa_cf_novo, model
+            ref.designs, ref.cfg.requisitos, kappa_c_novo, kappa_cf_novo, model, ref.cfg.globais.forma_residuo
         )
         X_norm_novo = stage1.common_minmax(X_novo)
         linhas.append(
@@ -396,6 +398,32 @@ def sweep_restricoes(ref: Result, **kwargs) -> pd.DataFrame:
     return pd.DataFrame(linhas)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# 6. Forma do resíduo no benefício (quadrado / absoluto)
+# ─────────────────────────────────────────────────────────────────────────
+def sweep_residuo(ref: Result, formas: tuple[str, ...] = config.FORMAS_RESIDUO) -> pd.DataFrame:
+    """Reconstrói o payoff com cada forma do resíduo e avalia com os perfis da referência.
+
+    Os estados (e portanto $\mathcal{F}^{(p)}$) não mudam; só o benefício de
+    ``Mp``, ``tb``, ``It`` e ``F`` e, com ele, a normalização comum.
+    """
+
+    linhas = []
+    for forma in formas:
+        X_novo, _ = stage1.build_payoff_tensor(
+            ref.designs, ref.cfg.requisitos, ref.cfg.kappa_c, ref.cfg.kappa_cf, ref.modelo_balistico, forma
+        )
+        globais = replace(ref.cfg.globais, forma_residuo=forma)
+        linhas.append(
+            {
+                "forma_residuo": forma,
+                "referencia": forma == ref.cfg.globais.forma_residuo,
+                **avaliar_cenario(ref, ref.cfg.perfis, globais, X_norm=stage1.common_minmax(X_novo)),
+            }
+        )
+    return pd.DataFrame(linhas)
+
+
 __all__ = [
     "metricas_estabilidade",
     "regiao_robustez",
@@ -406,4 +434,5 @@ __all__ = [
     "avaliar_cenario",
     "cenarios_restricoes",
     "sweep_restricoes",
+    "sweep_residuo",
 ]

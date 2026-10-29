@@ -68,6 +68,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Referência do índice de custo c_k (mediana ou mínimo sobre todos os designs)",
     )
     parser.add_argument(
+        "--forma-residuo",
+        choices=config.FORMAS_RESIDUO,
+        default=config.ConfigGlobal().forma_residuo,
+        help="Benefício de Mp, tb, It e F: -δ² (quadrado, Eq. 30 do artigo; padrão) ou -|δ| (absoluto)",
+    )
+    parser.add_argument(
         "--sem-teto-custo",
         action="store_true",
         help="Retira o teto de custo (rho = inf em todos os perfis); só a restrição de FS permanece",
@@ -173,7 +179,9 @@ def main(argv: list[str] | None = None) -> None:
         estagio=args.stage,
         seed=args.seed,
         perfis=perfis,
-        globais=config.ConfigGlobal(b_cer=args.b_cer, referencia_custo=args.referencia_custo),
+        globais=config.ConfigGlobal(
+            b_cer=args.b_cer, referencia_custo=args.referencia_custo, forma_residuo=args.forma_residuo
+        ),
         verificar_limite_por_potencias=args.verificar_limite_potencias,
     )
     model = escolher_modelo(args, designs)
@@ -186,12 +194,13 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("Calculando baseline AHP (aproximação)...")
     bl = baseline.ahp_baseline(designs, cfg.requisitos)
 
-    logger.info("Executando análise de sensibilidade (5 varreduras)...")
+    logger.info("Executando análise de sensibilidade (6 varreduras)...")
     sens_alpha = sensitivity.sweep_alpha(resultado)
     sens_pi = sensitivity.sweep_pi(resultado)
     sens_anp = sensitivity.sweep_anp(resultado)
     sens_lambda = sensitivity.sweep_lambda(resultado)
     sens_restricoes = sensitivity.sweep_restricoes(resultado)
+    sens_residuo = sensitivity.sweep_residuo(resultado)
 
     adm = resultado.admissibilidade
     if cfg.globais.b_provisorio:
@@ -254,6 +263,7 @@ def main(argv: list[str] | None = None) -> None:
     sens_anp.to_csv(out_dir / "sens_anp.csv", index=False)
     sens_lambda.to_csv(out_dir / "sens_lambda.csv", index=False)
     sens_restricoes.to_csv(out_dir / "sens_restricoes.csv", index=False)
+    sens_residuo.to_csv(out_dir / "sens_residuo.csv", index=False)
 
     # ─── run_config.json ────────────────────────────────────────────────
     run_config = {
@@ -274,6 +284,7 @@ def main(argv: list[str] | None = None) -> None:
         "d_star_design_id": ids[resultado.d_star],
         "b_cer_provisorio": cfg.globais.b_provisorio,
         "referencia_custo": cfg.globais.referencia_custo,
+        "forma_residuo": cfg.globais.forma_residuo,
         "tamanho_F": {s: int(adm.chi[s].sum()) for s in siglas},
         "tamanho_intersecao_F": int(adm.intersecao.sum()),
         "correlacao_c_pcmax_theta1": adm.correlacao_custo_pressao,
@@ -288,7 +299,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"=== Resumo — Estágio {args.stage} (n={len(designs)}, "
           f"{'SINTÉTICO' if dados_sinteticos else 'dados de ' + Path(args.csv).name}) ===")
     print(f"Referência do custo: {cfg.globais.referencia_custo}; b = {cfg.globais.b_cer}"
-          f"{' (PROVISÓRIO)' if cfg.globais.b_provisorio else ''}")
+          f"{' (PROVISÓRIO)' if cfg.globais.b_provisorio else ''}; resíduo: {cfg.globais.forma_residuo}")
     print(f"Design selecionado (d*): design_id={run_config['d_star_design_id']}, g={resultado.g[resultado.d_star]:.4f}")
     inadm = run_config["d_star_inadmissivel_em"]
     print(f"d* inadmissível para os perfis: {', '.join(inadm) if inadm else 'nenhum'}")

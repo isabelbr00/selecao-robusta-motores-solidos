@@ -122,7 +122,7 @@ def run(
     designs = designs.reset_index(drop=True)
 
     X, atributos_por_estado = stage1.build_payoff_tensor(
-        designs, cfg.requisitos, cfg.kappa_c, cfg.kappa_cf, model
+        designs, cfg.requisitos, cfg.kappa_c, cfg.kappa_cf, model, cfg.globais.forma_residuo
     )
     X_norm = stage1.common_minmax(X)
     scores = stage1.compute_profile_scores(X_norm, cfg.perfis)

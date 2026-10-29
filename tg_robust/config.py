@@ -158,11 +158,15 @@ def perfis_sem_restricoes(perfis: tuple[Perfil, ...]) -> tuple[Perfil, ...]:
 # TODO: preencher com o valor da CER de motores sólidos do Koelle (2013), com página/tabela.
 B_CER_PROVISORIO: float = 1.0
 REFERENCIAS_CUSTO: tuple[str, ...] = ("mediana", "minimo")
+# Forma do resíduo relativo δ = (X - X_alvo)/X_alvo no benefício de Mp, tb, It e F:
+# "quadrado" -> -δ² (Eq. 30 de Nascimento et al., 2022; padrão); "absoluto" -> -|δ|.
+FORMAS_RESIDUO: tuple[str, ...] = ("quadrado", "absoluto")
 
 
 @dataclass(frozen=True)
 class ConfigGlobal:
-    """Parâmetros das restrições de admissibilidade comuns a todos os perfis."""
+    """Parâmetros globais (não dependem do perfil): restrições de admissibilidade e
+    forma do resíduo no benefício."""
 
     # Capacidade estrutural de referência do envelope: a restrição pcmax < 16 MPa
     # do artigo reinterpretada como p_lim (FS unitário implícito no modelo original).
@@ -171,6 +175,7 @@ class ConfigGlobal:
     # Referência do índice de custo: c_k = (base_k / ref)^b, com ref = mediana ou
     # mínimo de base_d sobre TODOS os designs do estágio.
     referencia_custo: str = "mediana"
+    forma_residuo: str = "quadrado"
 
     def __post_init__(self) -> None:
         if not self.p_lim > 0.0:
@@ -179,6 +184,8 @@ class ConfigGlobal:
             raise ValueError("b_cer deve ser positivo e finito")
         if self.referencia_custo not in REFERENCIAS_CUSTO:
             raise ValueError(f"referencia_custo deve ser uma de {REFERENCIAS_CUSTO}")
+        if self.forma_residuo not in FORMAS_RESIDUO:
+            raise ValueError(f"forma_residuo deve ser uma de {FORMAS_RESIDUO}")
 
     @property
     def b_provisorio(self) -> bool:
@@ -306,6 +313,7 @@ __all__ = [
     "perfis_sem_restricoes",
     "B_CER_PROVISORIO",
     "REFERENCIAS_CUSTO",
+    "FORMAS_RESIDUO",
     "ConfigGlobal",
     "RI_SAATY",
     "CR_LIMITE",
