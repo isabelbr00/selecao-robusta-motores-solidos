@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from tg_robust import baseline, config, data
@@ -36,14 +37,13 @@ def test_design_5763_reproduz_tabela_7(designs_reais):
 
 
 @requer_dados_reais
-@pytest.mark.xfail(
-    reason=(
-        "O baseline de pesos iguais (5 resíduos/objetivos, estado nominal) escolhe o Id 5732; "
-        "o 5763 do artigo fica em 4º de 437. Registrado, não forçado."
-    ),
-    strict=True,
-)
 def test_ahp_baseline_escolhe_o_design_do_artigo(designs_reais):
     bl = baseline.ahp_baseline(designs_reais, config.REQUISITOS_ESTAGIO[1])
     escolhido = designs_reais.loc[bl["rank_ahp_baseline"].idxmin(), "design_id"]
     assert escolhido == ID_AHP_ARTIGO
+
+
+def test_beneficio_artigo_residuo_ao_quadrado():
+    req = config.REQUISITOS_ESTAGIO[1]
+    v = baseline.beneficio_artigo("Mp", np.array([req.Mp * 1.1, req.Mp * 0.8]), req)
+    np.testing.assert_allclose(v, [-0.01, -0.04])

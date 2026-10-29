@@ -2,7 +2,8 @@
 
 Implementa uma **aproximação** simplificada do AHP original, restrita aos
 cinco objetivos de desempenho propulsivo do artigo — ``Mp``, ``tb``, ``It``
-e ``F`` como resíduo relativo ao requisito, e ``rhoIsp`` maximizado — com
+e ``F`` como resíduo relativo ao requisito AO QUADRADO,
+``-((X - X_alvo)/X_alvo)^2`` (Eq. 30 do artigo), e ``rhoIsp`` maximizado — com
 pesos iguais e avaliados no estado nominal (sem propagação de cenários,
 pois o AHP original não trata incerteza de modelo). ``pcmax`` e ``eta`` são
 excluídos por serem tratados como restrições (e não como objetivos) no
@@ -11,10 +12,10 @@ artigo original.
 Procedimento: benefício → normalização min-max → normalização por coluna
 (soma 1, como no bloco $W_{AT}$) → soma com pesos iguais → ranking.
 
-**Esta é apenas uma aproximação.** Com os dados reais do 1º estágio (tabela
-do modeFRONTIER, 437 designs), ela escolhe o Id 5732 e põe o Id 5763 — o
-escolhido pelo AHP do artigo (Tabela 7) — em 4º lugar. Nenhum valor da
-Tabela 7 é codificado aqui; ver ``tests/test_baseline.py``.
+Com os dados reais do 1º estágio (tabela do modeFRONTIER, 437 ou 632
+designs), escolhe o Id 5763, o mesmo do AHP do artigo (Tabela 7). Com o
+resíduo em valor absoluto, o escolhido seria o Id 5732 (5763 em 4º). Nenhum
+valor da Tabela 7 é codificado aqui; ver ``tests/test_baseline.py``.
 """
 
 from __future__ import annotations
@@ -22,9 +23,18 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from . import config, stage1
+from . import config
 
 OBJETIVOS_BASELINE: tuple[str, ...] = ("Mp", "tb", "It", "F", "rhoIsp")
+
+
+def beneficio_artigo(criterio: str, valores: np.ndarray, requisitos: config.Requisitos) -> np.ndarray:
+    """Benefício do AHP do artigo: ``-((X - X_alvo)/X_alvo)^2`` nos resíduos; ``rhoIsp`` direto."""
+
+    if criterio in config.CRITERIOS_RESIDUO:
+        alvo = getattr(requisitos, criterio)
+        return -(((valores - alvo) / alvo) ** 2)
+    return valores
 
 
 def ahp_baseline(designs: pd.DataFrame, requisitos: config.Requisitos) -> pd.DataFrame:
@@ -39,8 +49,9 @@ def ahp_baseline(designs: pd.DataFrame, requisitos: config.Requisitos) -> pd.Dat
     R = len(OBJETIVOS_BASELINE)
     peso = 1.0 / R
 
-    attrs = {c: designs[c].to_numpy(dtype=float) for c in OBJETIVOS_BASELINE}
-    G = np.column_stack([stage1.beneficio(c, attrs, requisitos) for c in OBJETIVOS_BASELINE])
+    G = np.column_stack(
+        [beneficio_artigo(c, designs[c].to_numpy(dtype=float), requisitos) for c in OBJETIVOS_BASELINE]
+    )
 
     gmin = G.min(axis=0, keepdims=True)
     gmax = G.max(axis=0, keepdims=True)
@@ -62,4 +73,4 @@ def ahp_baseline(designs: pd.DataFrame, requisitos: config.Requisitos) -> pd.Dat
     )
 
 
-__all__ = ["OBJETIVOS_BASELINE", "ahp_baseline"]
+__all__ = ["OBJETIVOS_BASELINE", "beneficio_artigo", "ahp_baseline"]
