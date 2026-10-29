@@ -28,6 +28,11 @@ por design no formato de ``gerador_pareto/balistica.py``
 (``simular(x, k_cstar, k_cf) -> dict``) é adaptado por
 :class:`AdaptadorSimulador` (carregado com :func:`carregar_simulador`).
 
+Para a tabela do modeFRONTIER (dados reais do artigo, sem a balística),
+:class:`EscalaQuaseEstacionaria` aplica as leis de escala quase
+estacionárias diretamente aos valores tabelados — inclusive ``F`` e ``ta``,
+que lá não satisfazem ``F = It/tb`` exatamente — e reproduz a tabela em θ1.
+
 Para dados que já trazem os três estados calculados (colunas
 ``<criterio>_theta{1,2,3}``), :class:`EstadosPrecomputados` apenas lê essas
 colunas; ele não reexecuta a balística, logo não serve para a varredura de
@@ -111,6 +116,55 @@ class SurrogateBallistics:
             "rhoIsp": rhoIsp_novo,
             "pcmax": pcmax_novo,
             "eta": eta.copy(),
+        }
+
+
+class EscalaQuaseEstacionaria:
+    """Estados por leis de escala quase estacionárias, sem rodar a balística.
+
+    Com ``kp = kc**(1/(1-n))`` (``n`` da coluna ``nexp``, Tabela 6):
+
+    * ``rhoIsp``, ``It``: × ``kc·kcf``
+    * ``pcmax``, ``pcmed``: × ``kp``
+    * ``tb``, ``ta``: × ``kc**(-n/(1-n))``
+    * ``F``: × ``kcf·kp``
+    * ``Mp``, ``eta``: invariantes
+
+    ``F`` é escalado diretamente (não recalculado como ``It/tb``), de modo que
+    em θ1 (``kc = kcf = 1``) a saída é idêntica aos valores da tabela.
+    ``pcmed`` e ``ta`` só são devolvidos se existirem em ``designs``.
+    """
+
+    suporta_reexecucao = True
+
+    def __call__(
+        self, designs: pd.DataFrame, kc: float, kcf: float
+    ) -> dict[str, np.ndarray]:
+        if "nexp" not in designs.columns:
+            raise ValueError(
+                "designs deve conter a coluna 'nexp' (ver data.resolver_nexp)"
+            )
+
+        n = designs["nexp"].to_numpy(dtype=float)
+        fator_isp = kc * kcf
+        fator_p = kc ** (1.0 / (1.0 - n))
+        fator_t = kc ** (-n / (1.0 - n))
+        fatores = {
+            "Mp": 1.0,
+            "tb": fator_t,
+            "ta": fator_t,
+            "It": fator_isp,
+            "F": kcf * fator_p,
+            "rhoIsp": fator_isp,
+            "pcmax": fator_p,
+            "pcmed": fator_p,
+            "eta": 1.0,
+        }
+        opcionais = ("ta", "pcmed")
+        return {
+            c: designs[c].to_numpy(dtype=float) * f
+            for c, f in fatores.items()
+            if c not in opcionais or c in designs.columns
         }
 
 
@@ -234,6 +288,7 @@ def propagate_states(
 __all__ = [
     "BallisticModel",
     "SurrogateBallistics",
+    "EscalaQuaseEstacionaria",
     "CRITERIOS_POR_ESTADO",
     "coluna_estado",
     "EstadosPrecomputados",

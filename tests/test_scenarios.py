@@ -76,3 +76,47 @@ def test_propagate_states_tres_estados(designs):
     assert set(resultado.keys()) == set(config.ESTADOS_NOMES)
     for estado in config.ESTADOS_NOMES:
         assert set(resultado[estado].keys()) == set(config.CRITERIOS)
+
+
+# ─── EscalaQuaseEstacionaria (tabela do modeFRONTIER) ─────────────────────
+from tg_robust.scenarios import EscalaQuaseEstacionaria  # noqa: E402
+
+
+@pytest.fixture
+def designs_mf(designs):
+    # F fora de It/tb e ta/pcmed presentes, como na tabela do modeFRONTIER
+    d = designs.copy()
+    d["F"] = d["F"] * 1.03
+    d["ta"] = d["tb"] * 1.07
+    d["pcmed"] = d["pcmax"] * 0.45
+    return d
+
+
+def test_escala_theta1_identica_aos_dados(designs_mf):
+    saida = EscalaQuaseEstacionaria()(designs_mf, kc=1.0, kcf=1.0)
+    for c, v in saida.items():
+        assert np.array_equal(v, designs_mf[c].to_numpy(dtype=float)), c
+
+
+def test_escala_leis(designs_mf):
+    kc, kcf = 0.98, 0.93
+    n = designs_mf["nexp"].to_numpy()
+    s = EscalaQuaseEstacionaria()(designs_mf, kc=kc, kcf=kcf)
+    col = lambda c: designs_mf[c].to_numpy(dtype=float)  # noqa: E731
+    assert np.allclose(s["rhoIsp"], col("rhoIsp") * kc * kcf)
+    assert np.allclose(s["It"], col("It") * kc * kcf)
+    assert np.allclose(s["pcmax"], col("pcmax") * kc ** (1 / (1 - n)))
+    assert np.allclose(s["pcmed"], col("pcmed") * kc ** (1 / (1 - n)))
+    assert np.allclose(s["tb"], col("tb") * kc ** (-n / (1 - n)))
+    assert np.allclose(s["ta"], col("ta") * kc ** (-n / (1 - n)))
+    assert np.allclose(s["F"], col("F") * kcf * kc ** (1 / (1 - n)))
+    assert np.array_equal(s["Mp"], col("Mp")) and np.array_equal(s["eta"], col("eta"))
+
+
+def test_escala_coincide_com_substituto_quando_F_igual_It_sobre_tb(designs):
+    # sem ta/pcmed e com F = It/tb, as leis de escala coincidem com SurrogateBallistics
+    a = EscalaQuaseEstacionaria()(designs, kc=0.99, kcf=0.965)
+    b = SurrogateBallistics()(designs, kc=0.99, kcf=0.965)
+    assert set(a) == set(b)
+    for c in b:
+        assert np.allclose(a[c], b[c]), c

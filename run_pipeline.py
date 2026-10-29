@@ -16,6 +16,8 @@ Modelo de balística (estados θ e varredura de λ):
   (formato de ``gerador_pareto/balistica.py``) — reexecuta todos os estados;
 * CSV com colunas ``<criterio>_theta{1,2,3}`` e sem ``--balistica``: estados
   lidos dos dados; a varredura de λ é PULADA (com aviso);
+* tabela do modeFRONTIER (dados reais do artigo): leis de escala quase
+  estacionárias (``EscalaQuaseEstacionaria``), com varredura de λ;
 * demais casos: modelo substituto analítico (``SurrogateBallistics``).
 """
 
@@ -134,6 +136,9 @@ def escolher_modelo(args: argparse.Namespace, designs: pd.DataFrame) -> scenario
     if args.balistica is not None:
         logger.info("Balística reexecutada pelo simulador de %s", args.balistica)
         return scenarios.AdaptadorSimulador(scenarios.carregar_simulador(args.balistica))
+    if data.e_fonte_modefrontier(designs):
+        logger.info("Estados θ por leis de escala quase estacionárias (tabela do modeFRONTIER)")
+        return scenarios.EscalaQuaseEstacionaria()
     if data.tem_estados_precomputados(designs):
         logger.info("Estados θ lidos dos dados (sem reexecução da balística)")
         return scenarios.EstadosPrecomputados()
