@@ -1,6 +1,6 @@
 """Análise de sensibilidade transversal (Seção "Análise de Sensibilidade").
 
-Sete varreduras complementares, todas avaliadas contra a execução de
+Oito varreduras complementares, todas avaliadas contra a execução de
 referência (:class:`tg_robust.pipeline.Result`) e todas respeitando os
 conjuntos admissíveis $\\mathcal{F}^{(p)}$ da referência (ou recalculados,
 quando a varredura os altera):
@@ -18,7 +18,9 @@ quando a varredura os altera):
 6. :func:`sweep_residuo` — forma do resíduo no benefício de ``Mp``, ``tb``,
    ``It`` e ``F`` (``-δ²`` ou ``-|δ|``; reexecuta o Estágio 1);
 7. :func:`sweep_cenarios_fs` — cenários de FS dos perfis (:data:`CENARIOS_FS`),
-   com vencedor por perfil e top 10.
+   com vencedor por perfil e top 10;
+8. :func:`sweep_nominal` — apenas o estado nominal $\\theta_1$, com a
+   normalização refeita sobre ele.
 
 A estabilidade de cada ranking perturbado frente ao de referência é medida
 por três indicadores (:func:`metricas_estabilidade`): manutenção de
@@ -482,6 +484,24 @@ def sweep_cenarios_fs(ref: Result, cenarios: Mapping[str, Mapping[str, float]] =
     return pd.DataFrame(linhas)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# 8. Apenas o estado nominal
+# ─────────────────────────────────────────────────────────────────────────
+def sweep_nominal(ref: Result) -> pd.DataFrame:
+    """Usa só $\\theta_1$, com a normalização refeita sobre ele.
+
+    Com um único estado, as regras de Wald, Savage e Hurwicz coincidem no
+    ordenamento; a comparação com ``ref`` isola o efeito da decisão sob incerteza.
+    """
+
+    X_norm = stage1.common_minmax(ref.X[:, :, [0]])
+    nominal = ref.atributos_por_estado[config.ESTADOS_NOMES[0]]
+    atributos = {estado: nominal for estado in config.ESTADOS_NOMES}  # max_j pcmax = pcmax(θ1)
+    return pd.DataFrame(
+        [{"caso": "apenas_theta1", **avaliar_cenario(ref, ref.cfg.perfis, ref.cfg.globais, X_norm=X_norm, atributos=atributos)}]
+    )
+
+
 __all__ = [
     "metricas_estabilidade",
     "regiao_robustez",
@@ -495,4 +515,5 @@ __all__ = [
     "sweep_residuo",
     "CENARIOS_FS",
     "sweep_cenarios_fs",
+    "sweep_nominal",
 ]

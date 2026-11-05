@@ -91,12 +91,6 @@ def test_teto_de_custo_independe_do_fs():
     assert list(adm.adm_custo["H"]) == [True, True, False]
 
 
-def test_b_provisorio_emite_aviso(caso_manual):
-    designs, atributos = caso_manual
-    with pytest.warns(UserWarning, match="PROVISÓRIO"):
-        admissibility.conjuntos_admissiveis(designs, atributos, PERFIS, config.ConfigGlobal())
-
-
 def test_resumo_conta_motivos_de_exclusao():
     designs = pd.DataFrame({"Rc": [1.0] * 4, "Lt": [1.0, 1.0, 2.0, 2.0]})
     # design 1: só pressão; design 2: só custo; design 3: ambos

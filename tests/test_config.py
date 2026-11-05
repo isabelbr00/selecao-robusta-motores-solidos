@@ -121,8 +121,7 @@ def test_config_recusa_criterios_invalidos(criterios):
         config.Config(estagio=1, criterios=criterios)
 
 
-def test_config_global_padrao_mediana_e_b_provisorio():
+def test_config_global_padrao_mediana_e_b_1():
     g = config.ConfigGlobal()
     assert g.referencia_custo == "mediana" and g.p_lim == 16.0
-    assert g.b_provisorio
-    assert not config.ConfigGlobal(b_cer=0.7).b_provisorio
+    assert g.b_cer == 1.0

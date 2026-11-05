@@ -58,8 +58,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--b-cer",
         type=float,
-        default=config.B_CER_PROVISORIO,
-        help=f"Expoente b da CER de motores sólidos (Koelle, TransCost); padrão PROVISÓRIO = {config.B_CER_PROVISORIO}",
+        default=config.B_CER,
+        help=f"Expoente b da CER de motores sólidos (Koelle, TransCost); padrão = {config.B_CER}",
     )
     parser.add_argument(
         "--referencia-custo",
@@ -218,10 +218,9 @@ def main(argv: list[str] | None = None) -> None:
     sens_restricoes = sensitivity.sweep_restricoes(resultado)
     sens_residuo = sensitivity.sweep_residuo(resultado)
     sens_cenarios_fs = sensitivity.sweep_cenarios_fs(resultado)
+    sens_nominal = sensitivity.sweep_nominal(resultado)
 
     adm = resultado.admissibilidade
-    if cfg.globais.b_provisorio:
-        logger.warning(config.aviso_b_cer_provisorio())
 
     # ─── scores_<perfil>.csv ────────────────────────────────────────────
     for sigla, v in resultado.scores.items():
@@ -282,6 +281,7 @@ def main(argv: list[str] | None = None) -> None:
     sens_restricoes.to_csv(out_dir / "sens_restricoes.csv", index=False)
     sens_residuo.to_csv(out_dir / "sens_residuo.csv", index=False)
     sens_cenarios_fs.to_csv(out_dir / "sens_cenarios_fs.csv", index=False)
+    sens_nominal.to_csv(out_dir / "sens_nominal.csv", index=False)
 
     # ─── run_config.json ────────────────────────────────────────────────
     run_config = {
@@ -300,7 +300,6 @@ def main(argv: list[str] | None = None) -> None:
         "verificar_limite_por_potencias": args.verificar_limite_potencias,
         "cr_excede_limite": bool(resultado.consistency_df["cr_excede_limite"].any()),
         "d_star_design_id": ids[resultado.d_star],
-        "b_cer_provisorio": cfg.globais.b_provisorio,
         "referencia_custo": cfg.globais.referencia_custo,
         "forma_residuo": cfg.globais.forma_residuo,
         "tamanho_F": {s: int(adm.chi[s].sum()) for s in siglas},
@@ -317,8 +316,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"=== Resumo — Estágio {args.stage} (n={len(designs)}, "
           f"{'SINTÉTICO' if dados_sinteticos else 'dados de ' + Path(args.csv).name}) ===")
     print(f"Critérios ({len(cfg.criterios)}): {', '.join(cfg.criterios)}")
-    print(f"Referência do custo: {cfg.globais.referencia_custo}; b = {cfg.globais.b_cer}"
-          f"{' (PROVISÓRIO)' if cfg.globais.b_provisorio else ''}; resíduo: {cfg.globais.forma_residuo}")
+    print(f"Referência do custo: {cfg.globais.referencia_custo}; b = {cfg.globais.b_cer}; resíduo: {cfg.globais.forma_residuo}")
     print(f"Design selecionado (d*): design_id={run_config['d_star_design_id']}, g={resultado.g[resultado.d_star]:.4f}")
     inadm = run_config["d_star_inadmissivel_em"]
     print(f"d* inadmissível para os perfis: {', '.join(inadm) if inadm else 'nenhum'}")

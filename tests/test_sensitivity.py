@@ -98,3 +98,10 @@ def test_cenarios_fs_referencia_reproduz_a_execucao(resultado_pequeno):
         assert ref[f"vencedor_{s}"] == ids[resultado_pequeno.vencedor_perfil(s)]
     assert df.loc["todos_1,25", "n_F_W"] >= ref["n_F_W"] >= 0
     assert df.loc["todos_1,40", "n_F_S"] <= ref["n_F_S"]
+
+
+def test_sweep_nominal_equivale_a_lambda_zero(resultado_pequeno):
+    nominal = sensitivity.sweep_nominal(resultado_pequeno).iloc[0]
+    lam0 = sensitivity.sweep_lambda(resultado_pequeno, lambdas=(0.0,)).iloc[0]
+    assert nominal["d_star"] == lam0["d_star"]
+    assert nominal["kendall_tau"] == pytest.approx(lam0["kendall_tau"])

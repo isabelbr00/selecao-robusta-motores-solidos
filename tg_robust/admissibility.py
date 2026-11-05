@@ -138,8 +138,6 @@ def conjuntos_admissiveis(
     pcmax_nominal = np.asarray(atributos_por_estado[config.ESTADOS_NOMES[0]]["pcmax"], dtype=float)
     base = base_custo(designs, pcmax_nominal)
 
-    if globais.b_provisorio:
-        config.aviso_b_cer_provisorio()
     c = indice_custo(base, globais.b_cer, globais.referencia_custo)
 
     adm_pressao: dict[str, np.ndarray] = {}

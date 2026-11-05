@@ -34,6 +34,7 @@ def test_cli_ponta_a_ponta_dados_sinteticos(tmp_path, stage):
         "sens_restricoes.csv",
         "sens_residuo.csv",
         "sens_cenarios_fs.csv",
+        "sens_nominal.csv",
         "admissibilidade.csv",
         "admissibilidade_resumo.csv",
         "vencedores_por_perfil.csv",
@@ -47,7 +48,7 @@ def test_cli_ponta_a_ponta_dados_sinteticos(tmp_path, stage):
         cfg = json.load(f)
     assert cfg["dados_sinteticos"] is True
     assert cfg["n_designs"] == {1: 632, 2: 1089}[stage]
-    assert cfg["b_cer_provisorio"] is True  # b = 1.0 provisório até ser trocado
+    assert cfg["config"]["globais"]["b_cer"] == 1.0
     assert cfg["referencia_custo"] == "mediana"
     assert cfg["sens_lambda_executada"] is True  # modelo substituto reexecuta os estados
     assert set(cfg["tamanho_F"]) == {"W", "S", "H"}

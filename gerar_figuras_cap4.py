@@ -190,7 +190,7 @@ class Estagio:
                 f"({rc.get('modelo_balistico')}); passe --balistica."
             )
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # avisos (b provisório) já emitidos pelo run_pipeline
+            warnings.simplefilter("ignore")  # avisos já emitidos pelo run_pipeline
             self.r: pipeline.Result = pipeline.run(self.cfg, designs, model=model)
 
         self.ids = self.r.design_ids
@@ -429,8 +429,7 @@ def fig_custo_pressao(estagios: list[Estagio]):
                 bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
         ax.set_xlabel("$\\max_j\\, p_{c,\\max}(d_k,\\theta_j)$ (MPa)")
         virgula(ax)
-        sufixo = " (PROVISÓRIO)" if adm.globais.b_provisorio else ""
-        titulo_estagio(ax, e.estagio, f"ref. = {adm.globais.referencia_custo}, b = {fmt(adm.globais.b_cer, 1)}{sufixo}")
+        titulo_estagio(ax, e.estagio, f"ref. = {adm.globais.referencia_custo}, b = {fmt(adm.globais.b_cer, 1)}")
     eixos[0].set_ylabel("Índice de custo relativo $c_k$")
     alcas = [Line2D([], [], color=CORES_PERFIL[s], ls=ESTILO_PERFIL[s],
                     label=f"{s}: $p_{{lim}}/FS$ = {fmt(estagios[0].cfg.globais.p_lim / estagios[0].perfil(s).FS, 2)} MPa; "
@@ -520,8 +519,17 @@ def _marcar_mudanca(ax, x, tau, muda) -> bool:
     return bool(muda.any())
 
 
-PARAMETROS_SENS = ("alpha", "pi", "gamma", "lambda", "FS", "rho", "residuo")
+PARAMETROS_SENS = ("alpha", "pi", "gamma", "lambda", "nominal", "cenarios_fs", "rho", "residuo")
 TAU_PISO = 0.80  # limite inferior do eixo y, salvo se algum τ observado for menor
+
+
+def _cenarios_fs(e: Estagio) -> pd.DataFrame:
+    """Os cenários normativos de FS, sem a linha da referência."""
+
+    df = e.csv("sens_cenarios_fs.csv", obrigatorio=False)
+    if df is None or df.empty:
+        raise DadoAusente("sens_cenarios_fs.csv ausente (execução anterior aos cenários normativos de FS)")
+    return df[df["cenario"] != "referencia"]
 
 
 def casos_sensibilidade(e: Estagio, par: str) -> pd.DataFrame:
@@ -552,6 +560,16 @@ def casos_sensibilidade(e: Estagio, par: str) -> pd.DataFrame:
             raise DadoAusente("sens_lambda.csv vazio (varredura de λ pulada: sem modelo de balística que reexecute os estados)")
         valor = df["lambda"].astype(float).map(str)
         perfil = ""
+    elif par == "nominal":
+        df = e.csv("sens_nominal.csv", obrigatorio=False)
+        if df is None or df.empty:
+            raise DadoAusente("sens_nominal.csv ausente (execução anterior ao caso apenas θ1)")
+        valor = df["caso"]
+        perfil = ""
+    elif par == "cenarios_fs":
+        df = _cenarios_fs(e)
+        valor = df["cenario"]
+        perfil = ""
     elif par == "residuo":
         df = e.csv("sens_residuo.csv", obrigatorio=False)
         if df is None or df.empty:
@@ -581,7 +599,7 @@ def casos_sensibilidade(e: Estagio, par: str) -> pd.DataFrame:
 def _rotulo_caso(par: str, valor: str, perfil: str) -> str:
     if par == "pi":  # valor = "+20%", "-20%" ou "pi=1"
         return f"pi_{perfil}=1" if valor == "pi=1" else f"pi_{perfil} {valor}"
-    return f"{par}_{perfil}={valor}" if perfil and par in ("pi", "FS", "rho") else f"{par}={valor}"
+    return f"{par}_{perfil}={valor}" if perfil and par in ("pi", "rho") else f"{par}={valor}"
 
 
 def tabela_sensibilidade_resumo(estagios: list[Estagio], avisos: list[str]) -> pd.DataFrame:
@@ -627,9 +645,10 @@ def limite_inferior_tau(estagios: list[Estagio]) -> float:
 
 
 def fig_sensibilidade(estagios: list[Estagio], avisos: list[str]):
-    parametros = list(PARAMETROS_SENS)
+    parametros = [p for p in PARAMETROS_SENS if p != "nominal"]  # apenas θ1 é um ponto do painel de λ (λ = 0)
     titulos = {"alpha": "$\\alpha$ (Hurwicz)", "pi": "$\\pi$ (pesos dos perfis)", "gamma": "$\\gamma$ (ANP)",
-               "lambda": "$\\lambda$ (magnitude dos estados)", "FS": "FS por perfil", "rho": "$\\rho$ por perfil",
+               "lambda": "$\\lambda$ (magnitude dos estados) e apenas $\\theta_1$",
+               "cenarios_fs": "cenários normativos de FS", "rho": "$\\rho$ por perfil",
                "residuo": "forma do resíduo em $M_p$, $t_b$, $I_t$, $F$"}
     y_min = limite_inferior_tau(estagios)  # mesmo eixo y em todos os painéis
     fig, eixos = plt.subplots(len(parametros), len(estagios), figsize=(largura(estagios), 15.0), squeeze=False)
@@ -705,7 +724,25 @@ def _painel_sensibilidade(ax, e: Estagio, par: str) -> bool:
         ax.plot(df["lambda"], df["kendall_tau"], color="0.25", marker="o", ms=4)
         ax.axvline(1.0, color="0.5", ls=":")
         virgula(ax, "x")
-        return _marcar_mudanca(ax, df["lambda"], df["kendall_tau"], ~df["mesmo_d_star"].astype(bool))
+        muda = _marcar_mudanca(ax, df["lambda"], df["kendall_tau"], ~df["mesmo_d_star"].astype(bool))
+        nominal = e.csv("sens_nominal.csv", obrigatorio=False)
+        if nominal is not None and not nominal.empty:  # um só estado equivale a λ = 0
+            tau = nominal["kendall_tau"].iloc[0]
+            ax.scatter(0.0, tau, facecolor="white", edgecolor="0.25", marker="D", s=30, zorder=5)
+            ax.annotate(f"apenas $\\theta_1$: {fmt(tau, 3)}", (0.0, tau), xytext=(8, -3), textcoords="offset points",
+                        va="top", fontsize=8, color="0.25")
+            ticks = np.unique(np.r_[0.0, df["lambda"].to_numpy(dtype=float)])
+            ax.set_xticks(ticks, [fmt(t, 1) for t in ticks])
+            muda |= _marcar_mudanca(ax, [0.0], [tau], ~nominal["mesmo_d_star"].astype(bool))
+        return muda
+
+    if par == "cenarios_fs":
+        df = _cenarios_fs(e)
+        x = np.arange(len(df))
+        ax.scatter(x, df["kendall_tau"], color="0.25", marker="o", s=25, zorder=3)
+        ax.set_xticks(x, [c.replace("_", " ") for c in df["cenario"]])
+        ax.set_xlim(-0.5, len(df) - 0.5)
+        return _marcar_mudanca(ax, x, df["kendall_tau"], ~df["mesmo_d_star"].astype(bool))
 
     if par == "residuo":
         df = e.csv("sens_residuo.csv", obrigatorio=False)
@@ -720,7 +757,7 @@ def _painel_sensibilidade(ax, e: Estagio, par: str) -> bool:
         ax.set_xlim(-0.5, len(df) - 0.5)
         return _marcar_mudanca(ax, x, df["kendall_tau"], ~df["mesmo_d_star"].astype(bool))
 
-    # FS e rho: uma linha por perfil variado (demais na referência)
+    # rho: uma linha por perfil variado (demais na referência)
     df = e.csv("sens_restricoes.csv")
     df = df[df["tipo"] == par].copy()
     if df.empty:
@@ -848,8 +885,6 @@ def main(argv=None) -> None:
     print("Arquivos gerados:")
     for g in gerados:
         print(f"  {g}")
-    if any(e.cfg.globais.b_provisorio for e in estagios):
-        print("ATENÇÃO: expoente b da CER provisório — c_k e rho_p não são definitivos.")
     if avisos:
         print("Avisos (dados ausentes):")
         for a in avisos:

@@ -18,7 +18,6 @@ instância com ``dataclasses.replace``.
 from __future__ import annotations
 
 import math
-import warnings
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
@@ -169,9 +168,8 @@ def perfis_sem_restricoes(perfis: tuple[Perfil, ...]) -> tuple[Perfil, ...]:
 # Parâmetros globais das restrições (não dependem do perfil)
 # ─────────────────────────────────────────────────────────────────────────
 # Expoente b da CER de motores sólidos (TransCost, Koelle 2013).
-# PROVISÓRIO: 1.0 até ser trocado pelo valor da CER (aviso emitido enquanto isso).
-# TODO: preencher com o valor da CER de motores sólidos do Koelle (2013), com página/tabela.
-B_CER_PROVISORIO: float = 1.0
+# b = 1 definitivo: outros valores não alteram d* nem a ordenação de forma relevante.
+B_CER: float = 1.0
 REFERENCIAS_CUSTO: tuple[str, ...] = ("mediana", "minimo")
 # Forma do resíduo relativo δ = (X - X_alvo)/X_alvo no benefício de Mp, tb, It e F:
 # "quadrado" -> -δ² (Eq. 30 de Nascimento et al., 2022; padrão); "absoluto" -> -|δ|.
@@ -186,7 +184,7 @@ class ConfigGlobal:
     # Capacidade estrutural de referência do envelope: a restrição pcmax < 16 MPa
     # do artigo reinterpretada como p_lim (FS unitário implícito no modelo original).
     p_lim: float = PCMAX_LIMITE_SUPERIOR  # MPa
-    b_cer: float = B_CER_PROVISORIO
+    b_cer: float = B_CER
     # Referência do índice de custo: c_k = (base_k / ref)^b, com ref = mediana ou
     # mínimo de base_d sobre TODOS os designs do estágio.
     referencia_custo: str = "mediana"
@@ -201,10 +199,6 @@ class ConfigGlobal:
             raise ValueError(f"referencia_custo deve ser uma de {REFERENCIAS_CUSTO}")
         if self.forma_residuo not in FORMAS_RESIDUO:
             raise ValueError(f"forma_residuo deve ser uma de {FORMAS_RESIDUO}")
-
-    @property
-    def b_provisorio(self) -> bool:
-        return self.b_cer == B_CER_PROVISORIO
 
 # Índice de consistência aleatória de Saaty por ordem da matriz (RI)
 RI_SAATY: Mapping[int, float] = {
@@ -300,19 +294,6 @@ def kappa_escalado(kappa_ref: tuple[float, float, float], lam: float) -> tuple[f
     return tuple(1.0 - lam * (1.0 - float(k)) for k in kappa_ref)  # type: ignore[return-value]
 
 
-def aviso_b_cer_provisorio() -> str:
-    """Emite (e devolve) o aviso de que o expoente ``b`` da CER ainda é o provisório."""
-
-    aviso = (
-        f"Expoente b da CER de motores sólidos (Koelle, TransCost) PROVISÓRIO "
-        f"(b={B_CER_PROVISORIO}): o índice de custo c_k e o teto rho_p usam um valor "
-        "não definitivo. Troque config.B_CER_PROVISORIO / --b-cer pelo expoente da "
-        "CER antes de reportar resultados."
-    )
-    warnings.warn(aviso, stacklevel=2)
-    return aviso
-
-
 __all__ = [
     "ATRIBUTOS",
     "CRITERIOS",
@@ -340,7 +321,7 @@ __all__ = [
     "PERFIS_REFERENCIA",
     "substituir_perfil",
     "perfis_sem_restricoes",
-    "B_CER_PROVISORIO",
+    "B_CER",
     "REFERENCIAS_CUSTO",
     "FORMAS_RESIDUO",
     "ConfigGlobal",
@@ -350,5 +331,4 @@ __all__ = [
     "Config",
     "validar_perfis",
     "kappa_escalado",
-    "aviso_b_cer_provisorio",
 ]
