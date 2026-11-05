@@ -82,6 +82,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "7 (pcmax como critério) ou 5 (critérios do artigo)",
     )
     parser.add_argument(
+        "--criterio-fs-alvo",
+        action="store_true",
+        help="Acrescenta o critério de aderência ao FS alvo do perfil, -((FS_ef - FS_p)/FS_p)², "
+        "com FS_ef = p_lim/pcmax(θ1) e auto-laço em W_TT",
+    )
+    parser.add_argument(
         "--sem-teto-custo",
         action="store_true",
         help="Retira o teto de custo (rho = inf em todos os perfis); só a restrição de FS permanece",
@@ -186,7 +192,8 @@ def main(argv: list[str] | None = None) -> None:
     cfg = config.Config(
         estagio=args.stage,
         seed=args.seed,
-        criterios=config.VARIANTES_CRITERIOS[args.criterios],
+        criterios=config.VARIANTES_CRITERIOS[args.criterios]
+        + ((config.CRITERIO_FS_ALVO,) if args.criterio_fs_alvo else ()),
         perfis=perfis,
         globais=config.ConfigGlobal(
             b_cer=args.b_cer, referencia_custo=args.referencia_custo, forma_residuo=args.forma_residuo
@@ -203,13 +210,14 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("Calculando baseline AHP (aproximação)...")
     bl = baseline.ahp_baseline(designs, cfg.requisitos)
 
-    logger.info("Executando análise de sensibilidade (6 varreduras)...")
+    logger.info("Executando análise de sensibilidade (7 varreduras)...")
     sens_alpha = sensitivity.sweep_alpha(resultado)
     sens_pi = sensitivity.sweep_pi(resultado)
     sens_anp = sensitivity.sweep_anp(resultado)
     sens_lambda = sensitivity.sweep_lambda(resultado)
     sens_restricoes = sensitivity.sweep_restricoes(resultado)
     sens_residuo = sensitivity.sweep_residuo(resultado)
+    sens_cenarios_fs = sensitivity.sweep_cenarios_fs(resultado)
 
     adm = resultado.admissibilidade
     if cfg.globais.b_provisorio:
@@ -273,6 +281,7 @@ def main(argv: list[str] | None = None) -> None:
     sens_lambda.to_csv(out_dir / "sens_lambda.csv", index=False)
     sens_restricoes.to_csv(out_dir / "sens_restricoes.csv", index=False)
     sens_residuo.to_csv(out_dir / "sens_residuo.csv", index=False)
+    sens_cenarios_fs.to_csv(out_dir / "sens_cenarios_fs.csv", index=False)
 
     # ─── run_config.json ────────────────────────────────────────────────
     run_config = {

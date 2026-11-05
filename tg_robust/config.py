@@ -41,6 +41,10 @@ VARIANTES_CRITERIOS: Mapping[int, tuple[str, ...]] = {
     7: ATRIBUTOS,
 }
 
+# Critério opcional "aderência ao FS alvo" (--criterio-fs-alvo): depende do FS_p de
+# cada perfil, logo não entra no tensor comum (stage1.compute_profile_scores).
+CRITERIO_FS_ALVO: str = "aderFS"
+
 # Critérios cujo objetivo é aproximar um requisito (resíduo relativo, Eq. residuo)
 CRITERIOS_RESIDUO: tuple[str, ...] = ("Mp", "tb", "It", "F")
 # Critério a maximizar diretamente
@@ -248,9 +252,15 @@ class Config:
             raise ValueError("kappa_c e kappa_cf devem ter 3 elementos (um por estado)")
         if not self.criterios or len(set(self.criterios)) != len(self.criterios):
             raise ValueError(f"criterios deve ser não vazio e sem repetição, recebido {self.criterios!r}")
-        if set(self.criterios) - set(ATRIBUTOS):
+        if set(self.criterios) - set(ATRIBUTOS) - {CRITERIO_FS_ALVO}:
             raise ValueError(f"criterios deve estar contido em {ATRIBUTOS}, recebido {self.criterios!r}")
         validar_perfis(self.perfis)
+
+    @property
+    def criterios_comuns(self) -> tuple[str, ...]:
+        """Critérios do tensor de payoff, comuns a todos os perfis."""
+
+        return tuple(c for c in self.criterios if c != CRITERIO_FS_ALVO)
 
     @property
     def requisitos(self) -> Requisitos:
@@ -308,6 +318,7 @@ __all__ = [
     "CRITERIOS",
     "N_CRITERIOS",
     "VARIANTES_CRITERIOS",
+    "CRITERIO_FS_ALVO",
     "CRITERIOS_RESIDUO",
     "CRITERIOS_MAXIMIZAR",
     "CRITERIOS_MINIMIZAR",

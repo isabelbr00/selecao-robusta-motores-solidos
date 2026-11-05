@@ -174,6 +174,22 @@ def hurwicz(X_norm: np.ndarray, alpha: float) -> np.ndarray:
     return (alpha * maximo + (1.0 - alpha) * minimo).T
 
 
+def fs_efetivo(
+    criterios: tuple[str, ...], atributos_por_estado: dict[str, dict[str, np.ndarray]], p_lim: float
+) -> np.ndarray | None:
+    """$FS_{ef} = p_{lim}/p_{c,max}(\\theta_1)$, ou ``None`` sem o critério de aderência ao FS."""
+
+    if config.CRITERIO_FS_ALVO not in criterios:
+        return None
+    return p_lim / np.asarray(atributos_por_estado[config.ESTADOS_NOMES[0]]["pcmax"], dtype=float)
+
+
+def aderencia_fs(fs_ef: np.ndarray, fs_alvo: float) -> np.ndarray:
+    """Benefício de aderência ao FS alvo do perfil: ``g = -((FS_ef - FS_p)/FS_p)²``."""
+
+    return -(((fs_ef - fs_alvo) / fs_alvo) ** 2)
+
+
 # Regra de decisão de cada perfil: (X_norm, perfil) -> v, shape (n, R)
 REGRAS: dict[str, Callable[[np.ndarray, config.Perfil], np.ndarray]] = {
     "wald": lambda X_norm, perfil: wald(X_norm),
@@ -183,14 +199,24 @@ REGRAS: dict[str, Callable[[np.ndarray, config.Perfil], np.ndarray]] = {
 
 
 def compute_profile_scores(
-    X_norm: np.ndarray, perfis: Sequence[config.Perfil]
+    X_norm: np.ndarray, perfis: Sequence[config.Perfil], fs_ef: np.ndarray | None = None
 ) -> dict[str, np.ndarray]:
     """Calcula as pontuações ``v^(p)`` de cada perfil da lista, pela sua regra.
 
-    Retorna ``{sigla: v}``, cada ``v`` com shape ``(n, R)``.
+    Retorna ``{sigla: v}``, cada ``v`` com shape ``(n, R)``. Com ``fs_ef``
+    (:func:`fs_efetivo`), acrescenta a última coluna, a aderência ao FS alvo do
+    perfil: min-max sobre todos os designs, por perfil. Como só depende de
+    $\\theta_1$, o valor é o mesmo nos estados e as três regras o preservam.
     """
 
-    return {perfil.sigla: REGRAS[perfil.regra](X_norm, perfil) for perfil in perfis}
+    scores = {perfil.sigla: REGRAS[perfil.regra](X_norm, perfil) for perfil in perfis}
+    if fs_ef is None:
+        return scores
+    for perfil in perfis:
+        g = aderencia_fs(fs_ef, perfil.FS)
+        X_fs = common_minmax(np.repeat(g[None, :, None], X_norm.shape[2], axis=2))
+        scores[perfil.sigla] = np.hstack([scores[perfil.sigla], REGRAS[perfil.regra](X_fs, perfil)])
+    return scores
 
 
 def preference_vector(v: np.ndarray) -> np.ndarray:
@@ -227,6 +253,8 @@ __all__ = [
     "wald",
     "savage",
     "hurwicz",
+    "fs_efetivo",
+    "aderencia_fs",
     "REGRAS",
     "compute_profile_scores",
     "preference_vector",

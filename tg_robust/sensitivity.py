@@ -1,6 +1,6 @@
 """Análise de sensibilidade transversal (Seção "Análise de Sensibilidade").
 
-Cinco varreduras complementares, todas avaliadas contra a execução de
+Sete varreduras complementares, todas avaliadas contra a execução de
 referência (:class:`tg_robust.pipeline.Result`) e todas respeitando os
 conjuntos admissíveis $\\mathcal{F}^{(p)}$ da referência (ou recalculados,
 quando a varredura os altera):
@@ -16,7 +16,9 @@ quando a varredura os altera):
    (``FS=1``, ``rho=inf``). Cada cenário é uma lista de perfis
    (:func:`cenarios_restricoes`), avaliada por :func:`avaliar_cenario`;
 6. :func:`sweep_residuo` — forma do resíduo no benefício de ``Mp``, ``tb``,
-   ``It`` e ``F`` (``-δ²`` ou ``-|δ|``; reexecuta o Estágio 1).
+   ``It`` e ``F`` (``-δ²`` ou ``-|δ|``; reexecuta o Estágio 1);
+7. :func:`sweep_cenarios_fs` — cenários de FS dos perfis (:data:`CENARIOS_FS`),
+   com vencedor por perfil e top 10.
 
 A estabilidade de cada ranking perturbado frente ao de referência é medida
 por três indicadores (:func:`metricas_estabilidade`): manutenção de
@@ -116,7 +118,8 @@ def sweep_alpha(
         perfis_novos = ref.cfg.perfis
         for sigla in siglas_hurwicz:
             perfis_novos = config.substituir_perfil(perfis_novos, sigla, alpha=alpha)
-        scores_novo = stage1.compute_profile_scores(ref.X_norm, perfis_novos)
+        fs_ef = stage1.fs_efetivo(ref.cfg.criterios, ref.atributos_por_estado, ref.cfg.globais.p_lim)
+        scores_novo = stage1.compute_profile_scores(ref.X_norm, perfis_novos, fs_ef)
         resultado = anp.run_anp(
             scores_novo,
             ref.W_TT,
@@ -271,7 +274,7 @@ def sweep_lambda(
 
         X_novo, atributos_novo = stage1.build_payoff_tensor(
             ref.designs, ref.cfg.requisitos, kappa_c_novo, kappa_cf_novo, model, ref.cfg.globais.forma_residuo,
-            ref.cfg.criterios,
+            ref.cfg.criterios_comuns,
         )
         X_norm_novo = stage1.common_minmax(X_novo)
         linhas.append(
@@ -282,6 +285,28 @@ def sweep_lambda(
         )
 
     return pd.DataFrame(linhas)
+
+
+def _sintese_cenario(
+    ref: Result,
+    perfis: tuple[config.Perfil, ...],
+    globais: config.ConfigGlobal,
+    X_norm: np.ndarray,
+    atributos: dict[str, dict[str, np.ndarray]],
+) -> tuple[admissibility.Admissibilidade, anp.ResultadoANP | None]:
+    """$\\mathcal{F}^{(p)}$ e ANP de uma lista de perfis; ``None`` se a síntese for indefinida."""
+
+    config.validar_perfis(perfis)
+    fs_ef = stage1.fs_efetivo(ref.cfg.criterios, atributos, globais.p_lim)
+    scores = stage1.compute_profile_scores(X_norm, perfis, fs_ef)
+    adm = admissibility.conjuntos_admissiveis(ref.designs, atributos, perfis, globais)
+    pi = {p.sigla: p.peso_pi for p in perfis}
+    try:
+        return adm, anp.run_anp(
+            scores, ref.W_TT, gamma=ref.cfg.gamma_anp, pi=pi, q0=ref.anp_resultado.q0, chi_por_perfil=adm.chi
+        )
+    except ValueError:
+        return adm, None
 
 
 def avaliar_cenario(
@@ -302,19 +327,11 @@ def avaliar_cenario(
 
     X_norm = ref.X_norm if X_norm is None else X_norm
     atributos = ref.atributos_por_estado if atributos is None else atributos
-    config.validar_perfis(perfis)
-
-    scores = stage1.compute_profile_scores(X_norm, perfis)
-    adm = admissibility.conjuntos_admissiveis(ref.designs, atributos, perfis, globais)
-    pi = {p.sigla: p.peso_pi for p in perfis}
+    adm, resultado = _sintese_cenario(ref, perfis, globais, X_norm, atributos)
 
     tamanhos = {f"n_F_{s}": int(adm.chi[s].sum()) for s in adm.siglas}
     tamanhos["n_intersecao"] = int(adm.intersecao.sum())
-    try:
-        resultado = anp.run_anp(
-            scores, ref.W_TT, gamma=ref.cfg.gamma_anp, pi=pi, q0=ref.anp_resultado.q0, chi_por_perfil=adm.chi
-        )
-    except ValueError:
+    if resultado is None:
         return {
             **tamanhos,
             "sintese_definida": False,
@@ -413,7 +430,7 @@ def sweep_residuo(ref: Result, formas: tuple[str, ...] = config.FORMAS_RESIDUO) 
     for forma in formas:
         X_novo, _ = stage1.build_payoff_tensor(
             ref.designs, ref.cfg.requisitos, ref.cfg.kappa_c, ref.cfg.kappa_cf, ref.modelo_balistico, forma,
-            ref.cfg.criterios,
+            ref.cfg.criterios_comuns,
         )
         globais = replace(ref.cfg.globais, forma_residuo=forma)
         linhas.append(
@@ -423,6 +440,45 @@ def sweep_residuo(ref: Result, formas: tuple[str, ...] = config.FORMAS_RESIDUO) 
                 **avaliar_cenario(ref, ref.cfg.perfis, globais, X_norm=stage1.common_minmax(X_novo)),
             }
         )
+    return pd.DataFrame(linhas)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 7. Cenários de FS dos perfis
+# ─────────────────────────────────────────────────────────────────────────
+CENARIOS_FS: Mapping[str, Mapping[str, float]] = {
+    "referencia": {"W": 1.40, "S": 1.25, "H": 1.25},
+    "todos_1,25": {"W": 1.25, "S": 1.25, "H": 1.25},
+    "todos_1,40": {"W": 1.40, "S": 1.40, "H": 1.40},
+}
+
+
+def sweep_cenarios_fs(ref: Result, cenarios: Mapping[str, Mapping[str, float]] = CENARIOS_FS) -> pd.DataFrame:
+    """Avalia cada cenário de FS: ``d*``, vencedor por perfil, top 10 e $\\tau$ frente a ``ref``.
+
+    Payoff e normalização são os da referência; $\\mathcal{F}^{(p)}$ e, na
+    variante com aderência ao FS, o alvo do critério acompanham o FS do cenário.
+    ``top10`` traz os ``design_id`` separados por ``;``.
+    """
+
+    ids = ref.design_ids
+    linhas = []
+    for nome, fs in cenarios.items():
+        perfis = ref.cfg.perfis
+        for sigla, valor in fs.items():
+            perfis = config.substituir_perfil(perfis, sigla, FS=valor)
+        adm, resultado = _sintese_cenario(ref, perfis, ref.cfg.globais, ref.X_norm, ref.atributos_por_estado)
+        linha: dict = {"cenario": nome, **{f"FS_{s}": v for s, v in fs.items()}}
+        linha.update({f"n_F_{s}": int(adm.chi[s].sum()) for s in adm.siglas})
+        if resultado is None:
+            linhas.append({**linha, "d_star": None, **_metricas_indefinidas()})
+            continue
+        linha["d_star"] = ids[int(np.argmax(resultado.g))]
+        for s in adm.siglas:
+            k = stage1.preferred_design(resultado.g_por_perfil[s], adm.chi[s]) if s in resultado.g_por_perfil else None
+            linha[f"vencedor_{s}"] = "nenhum" if k is None else ids[k]
+        linha["top10"] = ";".join(str(i) for i in ids[np.argsort(-resultado.g)[:10]])
+        linhas.append({**linha, **metricas_estabilidade(ref.g, resultado.g)})
     return pd.DataFrame(linhas)
 
 
@@ -437,4 +493,6 @@ __all__ = [
     "cenarios_restricoes",
     "sweep_restricoes",
     "sweep_residuo",
+    "CENARIOS_FS",
+    "sweep_cenarios_fs",
 ]

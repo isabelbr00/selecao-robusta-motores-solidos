@@ -121,10 +121,11 @@ def run(
     designs = designs.reset_index(drop=True)
 
     X, atributos_por_estado = stage1.build_payoff_tensor(
-        designs, cfg.requisitos, cfg.kappa_c, cfg.kappa_cf, model, cfg.globais.forma_residuo, cfg.criterios
+        designs, cfg.requisitos, cfg.kappa_c, cfg.kappa_cf, model, cfg.globais.forma_residuo, cfg.criterios_comuns
     )
     X_norm = stage1.common_minmax(X)
-    scores = stage1.compute_profile_scores(X_norm, cfg.perfis)
+    fs_ef = stage1.fs_efetivo(cfg.criterios, atributos_por_estado, cfg.globais.p_lim)
+    scores = stage1.compute_profile_scores(X_norm, cfg.perfis, fs_ef)
     preference_vectors = {p: stage1.preference_vector(v) for p, v in scores.items()}
 
     # Restrições de admissibilidade: atuam só no argmax de V^(p) e em W_AT^(p),

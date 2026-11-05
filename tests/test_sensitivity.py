@@ -84,3 +84,17 @@ def test_sweep_residuo_referencia_reproduz_e_alternativa_reexecuta(resultado_peq
 def test_forma_residuo_invalida():
     with pytest.raises(ValueError):
         config.ConfigGlobal(forma_residuo="cubo")
+
+
+def test_cenarios_fs_referencia_reproduz_a_execucao(resultado_pequeno):
+    df = sensitivity.sweep_cenarios_fs(resultado_pequeno).set_index("cenario")
+    assert list(df.index) == ["referencia", "todos_1,25", "todos_1,40"]
+    ref = df.loc["referencia"]
+    ids = resultado_pequeno.design_ids
+    assert ref["d_star"] == ids[resultado_pequeno.d_star]
+    assert ref["kendall_tau"] == pytest.approx(1.0)
+    assert ref["top10"] == ";".join(str(i) for i in ids[np.argsort(-resultado_pequeno.g)[:10]])
+    for s in resultado_pequeno.cfg.siglas:
+        assert ref[f"vencedor_{s}"] == ids[resultado_pequeno.vencedor_perfil(s)]
+    assert df.loc["todos_1,25", "n_F_W"] >= ref["n_F_W"] >= 0
+    assert df.loc["todos_1,40", "n_F_S"] <= ref["n_F_S"]

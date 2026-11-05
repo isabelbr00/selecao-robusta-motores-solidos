@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from scipy.stats import rankdata
 
-from tg_robust import config, data, stage1
+from tg_robust import config, data, pipeline, stage1
 from tg_robust.scenarios import SurrogateBallistics
 
 
@@ -115,3 +115,39 @@ def test_preference_vector_media_simples(tensor):
     v = stage1.wald(Xn)
     V = stage1.preference_vector(v)
     assert V == pytest.approx(v.mean(axis=1))
+
+
+def test_aderencia_fs_formula_e_maximo_no_alvo():
+    fs = np.array([1.25, 1.40, 1.75])
+    np.testing.assert_allclose(stage1.aderencia_fs(fs, 1.40), [-((0.15 / 1.4) ** 2), 0.0, -0.0625])
+
+
+def test_fs_efetivo_usa_pcmax_nominal():
+    atributos = {"nominal": {"pcmax": np.array([8.0, 10.0])}, "severo": {"pcmax": np.array([1.0, 1.0])}}
+    assert stage1.fs_efetivo(config.CRITERIOS, atributos, 16.0) is None
+    criterios = config.CRITERIOS + (config.CRITERIO_FS_ALVO,)
+    np.testing.assert_allclose(stage1.fs_efetivo(criterios, atributos, 16.0), [2.0, 1.6])
+
+
+def test_criterio_fs_alvo_varia_por_perfil_e_tem_auto_laco():
+    designs = data.synthetic_designs(1, seed=5, n=80)
+    cfg = config.Config(estagio=1, criterios=config.CRITERIOS + (config.CRITERIO_FS_ALVO,))
+    r = pipeline.run(cfg, designs)
+    assert r.X.shape[0] == 6 and r.scores["W"].shape == (80, 7)
+    # S e H têm o mesmo alvo (1,25); W tem outro (1,40)
+    np.testing.assert_allclose(r.scores["S"][:, -1], r.scores["H"][:, -1])
+    assert not np.allclose(r.scores["W"][:, -1], r.scores["S"][:, -1])
+    assert r.scores["W"][:, -1].max() == pytest.approx(1.0) and r.scores["W"][:, -1].min() == pytest.approx(0.0)
+    esperado = np.zeros(7)
+    esperado[-1] = 1.0
+    np.testing.assert_array_equal(r.W_TT[:, -1], esperado)
+    np.testing.assert_array_equal(r.W_TT[-1, :-1], np.zeros(6))
+
+
+def test_criterio_fs_alvo_acompanha_o_fs_do_cenario():
+    designs = data.synthetic_designs(1, seed=5, n=80)
+    r = pipeline.run(config.Config(estagio=1, criterios=config.CRITERIOS + (config.CRITERIO_FS_ALVO,)), designs)
+    perfis = config.substituir_perfil(r.cfg.perfis, "S", FS=1.40)
+    fs_ef = stage1.fs_efetivo(r.cfg.criterios, r.atributos_por_estado, 16.0)
+    novo = stage1.compute_profile_scores(r.X_norm, perfis, fs_ef)
+    np.testing.assert_allclose(novo["S"][:, -1], r.scores["W"][:, -1])

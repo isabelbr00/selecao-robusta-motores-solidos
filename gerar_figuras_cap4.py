@@ -77,6 +77,7 @@ ROTULO_CRITERIO = {
     "F": r"$F$",
     "rhoIsp": r"$\rho I_{sp}$",
     "pcmax": r"$p_{c,\max}$",
+    config.CRITERIO_FS_ALVO: r"$FS_{alvo}$",
     "eta": r"$\eta_v$",
 }
 ROTULO_ESTADO = (r"$\theta_1$" + "\n(nominal)", r"$\theta_2$" + "\n(moderado)", r"$\theta_3$" + "\n(severo)")
@@ -286,7 +287,7 @@ def legenda_vencedores(e: Estagio, venc: dict[str, int | None]) -> dict[str, str
 def fig_coord_paralelas(estagios: list[Estagio]):
     fig, eixos = paineis(estagios, 3.4, sharey=True)
     for ax, e in zip(eixos, estagios):
-        x = np.arange(len(e.cfg.criterios))
+        x = np.arange(len(e.cfg.criterios_comuns))
         Y = e.r.X_norm[:, :, 0]  # (R, n): benefício normalizado (min-max comum aos 3 estados) em θ1
         ax.plot(x, Y, color=COR_FUNDO, lw=0.4, alpha=0.35, zorder=1)
         venc = e.vencedores()
@@ -306,8 +307,8 @@ def fig_coord_paralelas(estagios: list[Estagio]):
             ax.plot(x, Y[:, k_star], color=COR_DSTAR, lw=1.0, ls="--", label=f"d*: {e.ids[k_star]}", zorder=3)
         for xi in x:
             ax.axvline(xi, color="0.6", lw=0.6, zorder=0)
-        ax.set_xticks(x, [ROTULO_CRITERIO[c] for c in e.cfg.criterios])
-        ax.set_xlim(-0.2, len(e.cfg.criterios) - 0.8)
+        ax.set_xticks(x, [ROTULO_CRITERIO[c] for c in e.cfg.criterios_comuns])
+        ax.set_xlim(-0.2, len(e.cfg.criterios_comuns) - 0.8)
         ax.set_ylim(-0.03, 1.03)
         ax.spines["bottom"].set_visible(False)
         virgula(ax, "y")
