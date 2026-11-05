@@ -35,9 +35,9 @@ from . import config, scenarios
 
 logger = logging.getLogger(__name__)
 
-# Colunas canônicas exigidas em qualquer DataFrame de designs: os 7 critérios
+# Colunas canônicas exigidas em qualquer DataFrame de designs: os 7 atributos
 # e as variáveis de projeto do envelope (índice de custo, Seção 3.3.4).
-COLUNAS_CANONICAS: tuple[str, ...] = config.CRITERIOS + config.COLUNAS_GEOMETRIA
+COLUNAS_CANONICAS: tuple[str, ...] = config.ATRIBUTOS + config.COLUNAS_GEOMETRIA
 
 # Aliases de nomes de coluna. ``pc_med`` (pressão média, usada nos CSVs da
 # metodologia anterior) NÃO é aceito como ``pcmax``: a restrição de FS exige

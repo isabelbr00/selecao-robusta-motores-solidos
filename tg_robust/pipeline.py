@@ -113,16 +113,15 @@ def run(
 ) -> Result:
     """Executa o Estágio 1 e o Estágio 2 (ANP) para os ``designs`` dados.
 
-    Usa sempre o rascunho PLACEHOLDER de julgamentos de ``W_TT``
-    (:func:`tg_robust.judgments.build_WTT_placeholder`) — ver aviso emitido
-    por essa função.
+    Usa os critérios de ``cfg.criterios`` e a ``W_TT`` validada restrita a eles
+    (:func:`tg_robust.judgments.build_WTT_validada`).
     """
 
     model = model if model is not None else SurrogateBallistics()
     designs = designs.reset_index(drop=True)
 
     X, atributos_por_estado = stage1.build_payoff_tensor(
-        designs, cfg.requisitos, cfg.kappa_c, cfg.kappa_cf, model, cfg.globais.forma_residuo
+        designs, cfg.requisitos, cfg.kappa_c, cfg.kappa_cf, model, cfg.globais.forma_residuo, cfg.criterios
     )
     X_norm = stage1.common_minmax(X)
     scores = stage1.compute_profile_scores(X_norm, cfg.perfis)
@@ -132,8 +131,9 @@ def run(
     # nunca no payoff, na normalização ou nas pontuações v^(p).
     adm = admissibility.conjuntos_admissiveis(designs, atributos_por_estado, cfg.perfis, cfg.globais)
 
-    W_TT, julgamentos = J.build_WTT_placeholder()
-    q0 = np.full(config.N_CRITERIOS, 1.0 / config.N_CRITERIOS)
+    W_TT, julgamentos = J.build_WTT_validada(cfg.criterios)
+    R = len(cfg.criterios)
+    q0 = np.full(R, 1.0 / R)
 
     anp_resultado = anp.run_anp(
         scores,

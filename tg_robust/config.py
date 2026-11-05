@@ -25,16 +25,27 @@ from typing import Mapping
 import numpy as np
 
 # ─────────────────────────────────────────────────────────────────────────
-# Ordem fixa dos 7 critérios de desempenho (Seção 3.2 / Tabela "criterios_payoff")
+# Atributos de cada design e critérios de decisão (Seção 3.2 / Tabela "criterios_payoff")
 # ─────────────────────────────────────────────────────────────────────────
-CRITERIOS: tuple[str, ...] = ("Mp", "tb", "It", "F", "rhoIsp", "pcmax", "eta")
+# Atributos: sempre lidos dos dados e propagados pelos estados. pcmax é atributo,
+# mas não é critério no padrão: atua só no filtro de FS e no índice de custo.
+ATRIBUTOS: tuple[str, ...] = ("Mp", "tb", "It", "F", "rhoIsp", "pcmax", "eta")
+# Critérios pontuados no Estágio 1 e nós de C_T no ANP (padrão do pacote)
+CRITERIOS: tuple[str, ...] = ("Mp", "tb", "It", "F", "rhoIsp", "eta")
 N_CRITERIOS = len(CRITERIOS)
+# Variantes por número de critérios (Config.criterios, --criterios): 5 = critérios
+# do artigo (Tabela decomposicao do Cap. 4); 7 = pcmax como critério de minimização.
+VARIANTES_CRITERIOS: Mapping[int, tuple[str, ...]] = {
+    5: ("Mp", "tb", "It", "F", "rhoIsp"),
+    6: CRITERIOS,
+    7: ATRIBUTOS,
+}
 
 # Critérios cujo objetivo é aproximar um requisito (resíduo relativo, Eq. residuo)
 CRITERIOS_RESIDUO: tuple[str, ...] = ("Mp", "tb", "It", "F")
 # Critério a maximizar diretamente
 CRITERIOS_MAXIMIZAR: tuple[str, ...] = ("rhoIsp", "eta")
-# Critério a minimizar diretamente (benefício = -valor)
+# Critério a minimizar diretamente (benefício = -valor), só na variante de 7 critérios
 CRITERIOS_MINIMIZAR: tuple[str, ...] = ("pcmax",)
 
 # Critérios invariantes à propagação de cenários (Seção 3.3.1): dependem da
@@ -220,6 +231,7 @@ class Config:
 
     estagio: int  # 1 ou 2
     seed: int = 0
+    criterios: tuple[str, ...] = CRITERIOS
     perfis: tuple[Perfil, ...] = PERFIS_REFERENCIA
     globais: ConfigGlobal = field(default_factory=ConfigGlobal)
     gamma_anp: float = GAMMA_ANP_REF
@@ -234,6 +246,10 @@ class Config:
             raise ValueError("gamma_anp deve estar em (0, 1)")
         if len(self.kappa_c) != 3 or len(self.kappa_cf) != 3:
             raise ValueError("kappa_c e kappa_cf devem ter 3 elementos (um por estado)")
+        if not self.criterios or len(set(self.criterios)) != len(self.criterios):
+            raise ValueError(f"criterios deve ser não vazio e sem repetição, recebido {self.criterios!r}")
+        if set(self.criterios) - set(ATRIBUTOS):
+            raise ValueError(f"criterios deve estar contido em {ATRIBUTOS}, recebido {self.criterios!r}")
         validar_perfis(self.perfis)
 
     @property
@@ -288,8 +304,10 @@ def aviso_b_cer_provisorio() -> str:
 
 
 __all__ = [
+    "ATRIBUTOS",
     "CRITERIOS",
     "N_CRITERIOS",
+    "VARIANTES_CRITERIOS",
     "CRITERIOS_RESIDUO",
     "CRITERIOS_MAXIMIZAR",
     "CRITERIOS_MINIMIZAR",

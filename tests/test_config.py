@@ -109,6 +109,18 @@ def test_config_global_invalida(kwargs):
         config.ConfigGlobal(**kwargs)
 
 
+def test_criterios_padrao_sem_pcmax_mas_atributo_mantido():
+    assert config.Config(estagio=1).criterios == config.CRITERIOS == config.VARIANTES_CRITERIOS[6]
+    assert "pcmax" not in config.CRITERIOS and "pcmax" in config.ATRIBUTOS
+    assert config.REQUISITOS_ESTAGIO[1].Mp == 8780.34
+
+
+@pytest.mark.parametrize("criterios", [(), ("Mp", "Mp"), ("Mp", "pc_med")])
+def test_config_recusa_criterios_invalidos(criterios):
+    with pytest.raises(ValueError, match="criterios"):
+        config.Config(estagio=1, criterios=criterios)
+
+
 def test_config_global_padrao_mediana_e_b_provisorio():
     g = config.ConfigGlobal()
     assert g.referencia_custo == "mediana" and g.p_lim == 16.0

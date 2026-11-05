@@ -74,6 +74,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Benefício de Mp, tb, It e F: -δ² (quadrado, Eq. 30 do artigo; padrão) ou -|δ| (absoluto)",
     )
     parser.add_argument(
+        "--criterios",
+        type=int,
+        choices=sorted(config.VARIANTES_CRITERIOS),
+        default=config.N_CRITERIOS,
+        help="Variante de critérios: 6 (padrão; pcmax só no filtro de FS e no custo), "
+        "7 (pcmax como critério) ou 5 (critérios do artigo)",
+    )
+    parser.add_argument(
         "--sem-teto-custo",
         action="store_true",
         help="Retira o teto de custo (rho = inf em todos os perfis); só a restrição de FS permanece",
@@ -135,7 +143,7 @@ def tabela_pesos_efetivos(resultado: pipeline.Result) -> pd.DataFrame:
     """q0 (a priori) e q = (1-γ)(I - γ W_TT)^{-1} q0 (efetivo), com a razão q/q0."""
 
     q0, q = resultado.anp_resultado.q0, resultado.anp_resultado.q
-    return pd.DataFrame({"criterio": list(config.CRITERIOS), "q0": q0, "q": q, "q_sobre_q0": q / q0})
+    return pd.DataFrame({"criterio": list(resultado.cfg.criterios), "q0": q0, "q": q, "q_sobre_q0": q / q0})
 
 
 def escolher_modelo(args: argparse.Namespace, designs: pd.DataFrame) -> scenarios.BallisticModel:
@@ -178,6 +186,7 @@ def main(argv: list[str] | None = None) -> None:
     cfg = config.Config(
         estagio=args.stage,
         seed=args.seed,
+        criterios=config.VARIANTES_CRITERIOS[args.criterios],
         perfis=perfis,
         globais=config.ConfigGlobal(
             b_cer=args.b_cer, referencia_custo=args.referencia_custo, forma_residuo=args.forma_residuo
@@ -208,7 +217,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # ─── scores_<perfil>.csv ────────────────────────────────────────────
     for sigla, v in resultado.scores.items():
-        df_scores = pd.DataFrame(v, columns=list(config.CRITERIOS))
+        df_scores = pd.DataFrame(v, columns=list(cfg.criterios))
         df_scores.insert(0, "design_id", ids)
         df_scores["V"] = resultado.preference_vectors[sigla]
         df_scores.to_csv(out_dir / f"scores_{sigla}.csv", index=False)
@@ -298,6 +307,7 @@ def main(argv: list[str] | None = None) -> None:
     print()
     print(f"=== Resumo — Estágio {args.stage} (n={len(designs)}, "
           f"{'SINTÉTICO' if dados_sinteticos else 'dados de ' + Path(args.csv).name}) ===")
+    print(f"Critérios ({len(cfg.criterios)}): {', '.join(cfg.criterios)}")
     print(f"Referência do custo: {cfg.globais.referencia_custo}; b = {cfg.globais.b_cer}"
           f"{' (PROVISÓRIO)' if cfg.globais.b_provisorio else ''}; resíduo: {cfg.globais.forma_residuo}")
     print(f"Design selecionado (d*): design_id={run_config['d_star_design_id']}, g={resultado.g[resultado.d_star]:.4f}")
@@ -314,7 +324,7 @@ def main(argv: list[str] | None = None) -> None:
               f"  | sem restrições: {linha['vencedor_anp_sem_restricoes']} ({linha['vencedor_pesos_iguais_sem_restricoes']})")
     if not run_config["sens_lambda_executada"]:
         print("ATENÇÃO: varredura de λ pulada (sem modelo de balística que reexecute os estados; use --balistica).")
-    print(f"CR do rascunho de julgamentos excede 0,10? {run_config['cr_excede_limite']}")
+    print(f"CR dos julgamentos excede 0,10? {run_config['cr_excede_limite']}")
     print(f"Saídas gravadas em: {out_dir.resolve()}")
 
 

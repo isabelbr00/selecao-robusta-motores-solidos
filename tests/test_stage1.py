@@ -23,7 +23,9 @@ def designs_n_constante():
 def tensor(designs_n_constante):
     req = config.REQUISITOS_ESTAGIO[1]
     model = SurrogateBallistics()
-    X, _ = stage1.build_payoff_tensor(designs_n_constante, req, config.KAPPA_C_REF, config.KAPPA_CF_REF, model)
+    X, _ = stage1.build_payoff_tensor(
+        designs_n_constante, req, config.KAPPA_C_REF, config.KAPPA_CF_REF, model, criterios=config.ATRIBUTOS
+    )
     return X
 
 
@@ -47,13 +49,13 @@ def test_beneficio_maximizar_e_minimizar():
 
 def test_payoff_tensor_shape(tensor, designs_n_constante):
     n = len(designs_n_constante)
-    assert tensor.shape == (config.N_CRITERIOS, n, 3)
+    assert tensor.shape == (len(config.ATRIBUTOS), n, 3)
 
 
 def test_common_minmax_nao_degenera_para_rhoIsp_e_pcmax(tensor):
     Xn = stage1.common_minmax(tensor)
-    r_rho = config.CRITERIOS.index("rhoIsp")
-    r_pc = config.CRITERIOS.index("pcmax")
+    r_rho = config.ATRIBUTOS.index("rhoIsp")
+    r_pc = config.ATRIBUTOS.index("pcmax")
     # variação entre colunas (estados) preservada: colunas distintas
     assert not np.allclose(Xn[r_rho, :, 0], Xn[r_rho, :, 1])
     assert not np.allclose(Xn[r_pc, :, 0], Xn[r_pc, :, 2])
@@ -61,8 +63,8 @@ def test_common_minmax_nao_degenera_para_rhoIsp_e_pcmax(tensor):
 
 def test_per_state_minmax_degenera_para_rhoIsp_e_pcmax(tensor):
     Xn = stage1.per_state_minmax(tensor)
-    r_rho = config.CRITERIOS.index("rhoIsp")
-    r_pc = config.CRITERIOS.index("pcmax")
+    r_rho = config.ATRIBUTOS.index("rhoIsp")
+    r_pc = config.ATRIBUTOS.index("pcmax")
     # fator multiplicativo comum por estado é cancelado pela normalização
     # por estado: colunas tornam-se idênticas (efeito do cenário desaparece)
     assert np.allclose(Xn[r_rho, :, 0], Xn[r_rho, :, 1], atol=1e-9)
@@ -100,7 +102,7 @@ def test_savage_e_wald_mesma_ordenacao_para_criterio_invariante(tensor):
     v_s = stage1.savage(Xn)
     v_h = stage1.hurwicz(Xn, 0.5)
     for criterio in config.CRITERIOS_INVARIANTES:
-        r = config.CRITERIOS.index(criterio)
+        r = config.ATRIBUTOS.index(criterio)
         ordem_w = rankdata(v_w[:, r])
         ordem_s = rankdata(v_s[:, r])
         ordem_h = rankdata(v_h[:, r])

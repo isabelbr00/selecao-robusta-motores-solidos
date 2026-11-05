@@ -58,7 +58,7 @@ class BallisticModel(Protocol):
     Implementações devem recalcular, para cada design, os atributos de
     desempenho sob os fatores de degradação ``kc`` (sobre $c^{*}$) e ``kcf``
     (sobre $C_F$), e devolver um dicionário com um array por critério
-    (:data:`config.CRITERIOS`), na mesma ordem/índice de ``designs``.
+    (:data:`config.ATRIBUTOS`), na mesma ordem/índice de ``designs``.
 
     ``suporta_reexecucao`` indica se o modelo aceita fatores ``kc``/``kcf``
     arbitrários (necessário para a varredura de $\\lambda$).
@@ -170,7 +170,7 @@ class EscalaQuaseEstacionaria:
 
 # Critérios que variam entre estados e são lidos de colunas <criterio>_theta{j}
 CRITERIOS_POR_ESTADO: tuple[str, ...] = tuple(
-    c for c in config.CRITERIOS if c not in config.CRITERIOS_INVARIANTES
+    c for c in config.ATRIBUTOS if c not in config.CRITERIOS_INVARIANTES
 )
 
 
@@ -240,7 +240,7 @@ class AdaptadorSimulador:
         if faltantes:
             raise ValueError(f"Variáveis de projeto ausentes para o simulador: {faltantes}")
 
-        saida = {c: np.empty(len(designs)) for c in config.CRITERIOS}
+        saida = {c: np.empty(len(designs)) for c in config.ATRIBUTOS}
         for i, linha in enumerate(designs[list(self.variaveis_projeto)].itertuples(index=False)):
             x = {self.mapa_entrada.get(v, v): val for v, val in zip(self.variaveis_projeto, linha)}
             resultado = self.simular(x, k_cstar=kc, k_cf=kcf)

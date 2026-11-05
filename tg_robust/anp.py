@@ -6,7 +6,7 @@ via ``np.linalg.solve``), o limite por potências sucessivas da supermatriz
 completa (verificação opcional) e a síntese final entre perfis.
 
 Ordem de clusters fixa: ``(C_O, C_T, C_A)`` — objetivo (1 nó), critérios
-técnicos (7 nós, com dependência interna ``W_TT``) e alternativas (n nós,
+técnicos (R nós, com dependência interna ``W_TT``) e alternativas (n nós,
 absorventes).
 """
 
@@ -224,7 +224,7 @@ def run_anp(
     ``tol_verificacao`` (lança ``AssertionError`` caso contrário).
     """
 
-    R = config.N_CRITERIOS
+    R = W_TT.shape[0]
     q0 = q0 if q0 is not None else np.full(R, 1.0 / R)
     chi_por_perfil = chi_por_perfil or {}
 

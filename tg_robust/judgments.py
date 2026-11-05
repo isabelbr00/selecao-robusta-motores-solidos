@@ -11,16 +11,13 @@ fornece:
   (um número por critério influenciador), com as razões $I_i/I_j$ exatas —
   as prioridades resultantes são as intensidades normalizadas e a RC é 0;
 * o cálculo de prioridades (autovetor principal), $\\lambda_{max}$, CI e CR;
-* :func:`build_WTT_placeholder`, que monta a matriz $W_{TT}$ 7x7 a partir do
-  rascunho provisório de intensidades fornecido na especificação da TG —
-  **marcado explicitamente como PLACEHOLDER**, a ser validado pelo autor e
-  pelo orientador;
+* :func:`build_WTT_validada`, que monta a matriz $W_{TT}$ dos critérios em uso a
+  partir das intensidades validadas pelo orientador (:data:`INFLUENCIAS`);
 * :func:`perturb`, usada na análise de sensibilidade do ANP.
 """
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -53,24 +50,24 @@ def snap_to_saaty_scale(x: float) -> float:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Rascunho provisório (PLACEHOLDER) de intensidades de influência
+# Intensidades de influência validadas pelo orientador
 # ─────────────────────────────────────────────────────────────────────────
 # Quem influencia a coluna (critério-alvo), com intensidade absoluta na
-# Escala de Saaty. AINDA NÃO VALIDADO pelo autor/orientador — ver aviso em
-# build_WTT_placeholder().
-PLACEHOLDER_INFLUENCIAS: Mapping[str, Mapping[str, float]] = {
+# Escala de Saaty, sobre os 7 atributos. Cada variante usa só as relações entre
+# os seus critérios (build_WTT): no padrão de 6, somem as que envolvem pcmax.
+INFLUENCIAS: Mapping[str, Mapping[str, float]] = {
     "Mp": {"It": 9, "rhoIsp": 5, "tb": 3, "eta": 5},
     "tb": {"pcmax": 5, "F": 5, "It": 3, "Mp": 3},
     "It": {"Mp": 7, "rhoIsp": 7, "F": 5, "tb": 5},
     "F": {"pcmax": 9, "It": 5, "tb": 5, "rhoIsp": 3},
     "rhoIsp": {"pcmax": 5},
-    "pcmax": {"F": 9, "tb": 3, "rhoIsp": 3, "eta": 3},  # eta: A CONFIRMAR (ver RELACOES_A_CONFIRMAR)
+    "pcmax": {"F": 9, "tb": 3, "rhoIsp": 3, "eta": 3},
     "eta": {"Mp": 7},
 }
 
 # Justificativa física de cada relação (critério influenciado, influenciador),
 # em uma frase. Notação: subscritos e sobrescritos como em LaTeX (M_p, p_{c,max},
-# p_c^n), para uso direto em relatórios. Propostas para revisão do orientador.
+# p_c^n), para uso direto em relatórios.
 JUSTIFICATIVAS: Mapping[tuple[str, str], str] = {
     ("Mp", "It"): "I_t = M_p·I_{sp} (I_{sp} em m/s): para um I_{sp} dado, o impulso exigido fixa a massa de propelente.",
     ("Mp", "rhoIsp"): "ρ_p define quanta massa cabe na câmara (M_p = ρ_p η_v V_c) e I_{sp}, quanta massa é preciso para um dado I_t.",
@@ -94,11 +91,6 @@ JUSTIFICATIVAS: Mapping[tuple[str, str], str] = {
     ("pcmax", "rhoIsp"): "p_c = (ρ_p c^* a·A_b/A_t)^{1/(1−n)}: ρ_p e c^* entram diretamente na pressão de equilíbrio.",
     ("pcmax", "eta"): "Carregamento maior tende a elevar a razão A_b/A_t (K_n) e, com ela, a pressão.",
     ("eta", "Mp"): "η_v = M_p/(ρ_p V_c): no envelope dado, é a própria fração de propelente.",
-}
-
-# Relações mantidas, mas pendentes de confirmação, com o motivo.
-RELACOES_A_CONFIRMAR: Mapping[tuple[str, str], str] = {
-    ("pcmax", "eta"): "a confirmar com o orientador (depende de o modelo representar queima erosiva)",
 }
 
 
@@ -163,9 +155,10 @@ def build_WTT(
     (:func:`from_intensities`), calcula as prioridades locais (autovetor) e
     as insere na coluna correspondente de ``W_TT``, nas linhas dos critérios
     influenciadores; critérios não listados como influenciadores recebem
-    peso 0 naquela coluna. Colunas sem nenhum influenciador (não deveria
-    ocorrer no rascunho) recebem distribuição uniforme sobre os demais
-    critérios, para preservar a propriedade estocástica.
+    peso 0 naquela coluna. Só contam as relações entre os ``criterios``, e as
+    prioridades de cada coluna são renormalizadas entre elas. Coluna sem
+    nenhum influenciador recebe auto-laço (peso 1 em si mesma), o que preserva
+    a propriedade estocástica.
 
     Retorna ``(W_TT, julgamentos)``, em que ``julgamentos`` é a lista de
     :class:`ColumnJudgment` (uma por coluna), usada por
@@ -178,13 +171,8 @@ def build_WTT(
     julgamentos: list[ColumnJudgment] = []
 
     for alvo in criterios:
-        influenciadores = influencias.get(alvo, {})
+        influenciadores = {c: i for c, i in influencias.get(alvo, {}).items() if c in idx} or {alvo: 1.0}
         coluna = idx[alvo]
-        if not influenciadores:
-            outros = [c for c in criterios if c != alvo]
-            for c in outros:
-                W_TT[idx[c], coluna] = 1.0 / len(outros)
-            continue
 
         julgamento = from_intensities(alvo, influenciadores)
         w, _ = eigen_priorities(julgamento.A)
@@ -195,24 +183,12 @@ def build_WTT(
     return W_TT, julgamentos
 
 
-def build_WTT_placeholder(
+def build_WTT_validada(
     criterios: tuple[str, ...] = config.CRITERIOS,
 ) -> tuple[np.ndarray, list[ColumnJudgment]]:
-    """Constrói $W_{TT}$ a partir do rascunho PLACEHOLDER de intensidades.
+    """Constrói $W_{TT}$ dos ``criterios`` a partir de :data:`INFLUENCIAS`."""
 
-    Emite um aviso explícito: os julgamentos ainda não foram validados pelo
-    autor nem pelo orientador (Seção de julgamentos da especificação).
-    """
-
-    aviso = (
-        "W_TT construída a partir de um RASCUNHO PROVISÓRIO (PLACEHOLDER) de "
-        "intensidades de influência entre critérios, ainda não validado pelo "
-        "autor nem pelo orientador. Não usar para conclusões finais da TG "
-        "sem substituir judgments.PLACEHOLDER_INFLUENCIAS pelos julgamentos "
-        "definitivos."
-    )
-    warnings.warn(aviso, stacklevel=2)
-    return build_WTT(PLACEHOLDER_INFLUENCIAS, criterios)
+    return build_WTT(INFLUENCIAS, criterios)
 
 
 def consistency_report(julgamentos: list[ColumnJudgment]) -> pd.DataFrame:
@@ -315,15 +291,14 @@ def WTT_de_julgamentos(
 __all__ = [
     "SAATY_SCALE",
     "snap_to_saaty_scale",
-    "PLACEHOLDER_INFLUENCIAS",
+    "INFLUENCIAS",
     "JUSTIFICATIVAS",
-    "RELACOES_A_CONFIRMAR",
     "ColumnJudgment",
     "from_intensities",
     "eigen_priorities",
     "consistency",
     "build_WTT",
-    "build_WTT_placeholder",
+    "build_WTT_validada",
     "consistency_report",
     "perturb",
     "julgamentos_por_alvo",

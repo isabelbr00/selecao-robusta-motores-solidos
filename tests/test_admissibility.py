@@ -154,7 +154,7 @@ def test_perfil_vazio_excluido_da_sintese_com_pi_renormalizado():
     rng = np.random.default_rng(2)
     n = 8
     scores = {p: rng.uniform(size=(n, config.N_CRITERIOS)) for p in "WSH"}
-    W_TT, _ = J.build_WTT_placeholder()
+    W_TT, _ = J.build_WTT_validada()
     pi = {"W": 0.5, "S": 0.3, "H": 0.2}
     chi = {"W": np.zeros(n, dtype=bool), "S": np.ones(n, dtype=bool), "H": rng.uniform(size=n) > 0.3}
 
@@ -171,7 +171,7 @@ def test_perfil_vazio_excluido_da_sintese_com_pi_renormalizado():
 def test_todos_os_perfis_vazios_levanta_erro():
     n = 4
     scores = {p: np.ones((n, config.N_CRITERIOS)) for p in "WSH"}
-    W_TT, _ = J.build_WTT_placeholder()
+    W_TT, _ = J.build_WTT_validada()
     chi = {p: np.zeros(n, dtype=bool) for p in "WSH"}
     with pytest.raises(ValueError, match="todos os perfis"):
         anp.run_anp(scores, W_TT, gamma=0.5, pi={"W": 0.4, "S": 0.3, "H": 0.3}, chi_por_perfil=chi)
@@ -383,7 +383,7 @@ def test_adaptador_balistica_reproduz_estados_do_csv():
     simulados = _estados(designs, modelo)
     lidos = _estados(designs)
     for e in config.ESTADOS_NOMES:
-        for c in config.CRITERIOS:
+        for c in config.ATRIBUTOS:
             np.testing.assert_allclose(simulados[e][c], lidos[e][c], rtol=1e-10, err_msg=f"{e}/{c}")
 
 
@@ -463,3 +463,28 @@ def test_base_custo_sem_rho_usa_envelope(caso_manual):
     designs, atributos = caso_manual
     adm = admissibility.conjuntos_admissiveis(designs, atributos, PERFIS, config.ConfigGlobal())
     np.testing.assert_allclose(adm.base_custo, [11.0, 11.5, 20.0, 3.25])
+
+
+def test_pcmax_fora_dos_criterios_continua_no_filtro_e_no_custo():
+    designs = data.synthetic_designs(1, seed=5, n=120)
+    r6 = pipeline.run(config.Config(estagio=1), designs)
+    r7 = pipeline.run(config.Config(estagio=1, criterios=config.VARIANTES_CRITERIOS[7]), designs)
+    assert r6.X.shape[0] == 6 and r7.X.shape[0] == 7
+    assert list(r6.scores["W"].shape) == [120, 6]
+    for s in r6.cfg.siglas:
+        np.testing.assert_array_equal(r6.admissibilidade.chi[s], r7.admissibilidade.chi[s])
+    np.testing.assert_array_equal(r6.admissibilidade.c, r7.admissibilidade.c)
+    # o custo e a pressão máxima entre estados continuam dependendo de pcmax
+    d = designs.copy()
+    d["pcmax"] = d["pcmax"] * 1.1
+    np.testing.assert_allclose(
+        pipeline.run(config.Config(estagio=1), d).admissibilidade.pcmax_max, r6.admissibilidade.pcmax_max * 1.1
+    )
+
+
+@pytest.mark.parametrize("n_criterios", sorted(config.VARIANTES_CRITERIOS))
+def test_limite_por_potencias_confere_em_cada_variante(n_criterios):
+    designs = data.synthetic_designs(1, seed=5, n=40)
+    criterios = config.VARIANTES_CRITERIOS[n_criterios]
+    r = pipeline.run(config.Config(estagio=1, criterios=criterios, verificar_limite_por_potencias=True), designs)
+    assert np.isclose(r.g.sum(), 1.0) and np.isclose(r.anp_resultado.q.sum(), 1.0)

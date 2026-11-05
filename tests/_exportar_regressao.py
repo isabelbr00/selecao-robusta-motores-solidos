@@ -40,7 +40,7 @@ INFLUENCIAS_REGRESSAO = {
 }
 
 
-def wtt_congelada(criterios=config.CRITERIOS):
+def wtt_congelada(criterios=getattr(config, "ATRIBUTOS", config.CRITERIOS)):
     julgamentos = []
     for alvo in criterios:
         intens = INFLUENCIAS_REGRESSAO[alvo]
@@ -55,7 +55,8 @@ def wtt_congelada(criterios=config.CRITERIOS):
     return J.WTT_de_julgamentos(J.julgamentos_por_alvo(julgamentos), criterios), julgamentos
 
 
-J.build_WTT_placeholder = wtt_congelada
+J.build_WTT_placeholder = wtt_congelada  # versão anterior
+J.build_WTT_validada = wtt_congelada  # versão atual
 
 
 class EstadosDasColunas:
@@ -80,6 +81,7 @@ else:
     # a versão anterior usava -|δ| nos resíduos
     cfg = config.Config(
         estagio=estagio,
+        criterios=config.ATRIBUTOS,  # a versão anterior tinha pcmax como critério
         perfis=config.perfis_sem_restricoes(config.PERFIS_REFERENCIA),
         globais=config.ConfigGlobal(forma_residuo="absoluto"),
     )

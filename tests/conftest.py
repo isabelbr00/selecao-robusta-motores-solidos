@@ -9,8 +9,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _silenciar_avisos_esperados():
-    """Evita que os avisos esperados (dados sintéticos, W_TT placeholder, n
-    padrão) poluam a saída dos testes, sem afetar a captura explícita de
+    """Evita que os avisos esperados (dados sintéticos, n padrão) poluam a saída dos testes, sem afetar a captura explícita de
     avisos feita por testes que a verificam (``pytest.warns``)."""
 
     with warnings.catch_warnings():

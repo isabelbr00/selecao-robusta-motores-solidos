@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -56,28 +58,27 @@ def test_perturb_valor_entre_niveis_vai_ao_nivel_vizinho():
     assert abaixo[0, 1] == pytest.approx(1.0)
 
 
-def test_build_WTT_placeholder_emite_aviso_e_retorna_estocastica_por_coluna():
-    with pytest.warns(UserWarning, match="PLACEHOLDER"):
-        W_TT, juls = J.build_WTT_placeholder()
+def test_build_WTT_validada_nao_emite_aviso_e_retorna_estocastica_por_coluna():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        W_TT, juls = J.build_WTT_validada()
     assert W_TT.shape == (config.N_CRITERIOS, config.N_CRITERIOS)
     assert np.allclose(W_TT.sum(axis=0), 1.0)
     assert (W_TT >= 0).all()
 
 
-def test_build_WTT_placeholder_consistencia_dentro_do_limite():
-    with pytest.warns(UserWarning):
-        _, juls = J.build_WTT_placeholder()
+def test_build_WTT_validada_consistencia_dentro_do_limite():
+    _, juls = J.build_WTT_validada()
     relatorio = J.consistency_report(juls)
     excedentes = relatorio[relatorio["cr_excede_limite"]]
     assert len(excedentes) == 0, (
-        f"Julgamento(s) do rascunho PLACEHOLDER excedem CR>0,10, reportar e ajustar: "
+        f"Julgamento(s) de W_TT excedem CR>0,10, reportar e ajustar: "
         f"{excedentes[['alvo', 'CR']].to_dict('records')}"
     )
 
 
 def test_perturb_preserva_reciprocidade_e_escala():
-    with pytest.warns(UserWarning):
-        _, juls = J.build_WTT_placeholder()
+    _, juls = J.build_WTT_validada()
     por_alvo = J.julgamentos_por_alvo(juls)
 
     novo = J.perturb(por_alvo, "Mp", "It", "tb", step=1)
@@ -89,8 +90,7 @@ def test_perturb_preserva_reciprocidade_e_escala():
 
 
 def test_perturb_nao_sai_dos_limites_da_escala():
-    with pytest.warns(UserWarning):
-        _, juls = J.build_WTT_placeholder()
+    _, juls = J.build_WTT_validada()
     por_alvo = J.julgamentos_por_alvo(juls)
 
     atual = por_alvo
@@ -102,28 +102,59 @@ def test_perturb_nao_sai_dos_limites_da_escala():
 
 
 def test_perturb_coluna_invalida_levanta_erro():
-    with pytest.warns(UserWarning):
-        _, juls = J.build_WTT_placeholder()
+    _, juls = J.build_WTT_validada()
     por_alvo = J.julgamentos_por_alvo(juls)
     with pytest.raises(KeyError):
         J.perturb(por_alvo, "nao_existe", "It", "tb", step=1)
 
 
 def test_WTT_de_julgamentos_reconstroi_matriz_original():
-    with pytest.warns(UserWarning):
-        W_TT, juls = J.build_WTT_placeholder()
+    W_TT, juls = J.build_WTT_validada()
     por_alvo = J.julgamentos_por_alvo(juls)
     W_TT_reconstruida = J.WTT_de_julgamentos(por_alvo)
     assert np.allclose(W_TT, W_TT_reconstruida)
 
 
 def test_toda_relacao_de_WTT_tem_justificativa_e_vice_versa():
-    relacoes = {(alvo, infl) for alvo, d in J.PLACEHOLDER_INFLUENCIAS.items() for infl in d}
+    relacoes = {(alvo, infl) for alvo, d in J.INFLUENCIAS.items() for infl in d}
     assert set(J.JUSTIFICATIVAS) == relacoes
     assert all(J.JUSTIFICATIVAS[r].strip() for r in relacoes)
-    assert set(J.RELACOES_A_CONFIRMAR) <= relacoes
 
 
-def test_eta_para_pcmax_mantida_e_marcada_a_confirmar():
-    assert "eta" in J.PLACEHOLDER_INFLUENCIAS["pcmax"]
-    assert "queima erosiva" in J.RELACOES_A_CONFIRMAR[("pcmax", "eta")]
+def test_WTT_padrao_sem_pcmax_e_colunas_renormalizadas():
+    W_TT, _ = J.build_WTT_validada()
+    assert config.CRITERIOS == ("Mp", "tb", "It", "F", "rhoIsp", "eta")
+    assert W_TT.shape == (6, 6)
+    assert np.allclose(W_TT.sum(axis=0), 1.0)
+    i = {c: k for k, c in enumerate(config.CRITERIOS)}
+    # tb: {F: 5, It: 3, Mp: 3} sem pcmax; F: {It: 5, tb: 5, rhoIsp: 3} sem pcmax
+    assert W_TT[i["F"], i["tb"]] == pytest.approx(5 / 11)
+    assert W_TT[i["It"], i["tb"]] == pytest.approx(3 / 11)
+    assert W_TT[i["Mp"], i["F"]] == 0.0
+    assert W_TT[i["It"], i["F"]] == pytest.approx(5 / 13)
+    assert W_TT[i["rhoIsp"], i["F"]] == pytest.approx(3 / 13)
+
+
+def test_rhoIsp_sem_influenciadores_recebe_auto_laco():
+    W_TT, juls = J.build_WTT_validada()
+    r = config.CRITERIOS.index("rhoIsp")
+    esperado = np.zeros(len(config.CRITERIOS))
+    esperado[r] = 1.0
+    np.testing.assert_array_equal(W_TT[:, r], esperado)
+    assert np.allclose(J.WTT_de_julgamentos(J.julgamentos_por_alvo(juls)), W_TT)
+    assert J.consistency_report(juls).set_index("alvo").loc["rhoIsp", "CR"] == 0.0
+
+
+def test_variante_7_criterios_mantem_todas_as_relacoes():
+    W_TT, _ = J.build_WTT_validada(config.VARIANTES_CRITERIOS[7])
+    relacoes = {(alvo, infl) for alvo, d in J.INFLUENCIAS.items() for infl in d}
+    i = {c: k for k, c in enumerate(config.ATRIBUTOS)}
+    assert {(a, b) for a in i for b in i if W_TT[i[b], i[a]] > 0} == relacoes
+
+
+def test_variante_5_criterios_tem_auto_laco_em_rhoIsp():
+    criterios = config.VARIANTES_CRITERIOS[5]
+    W_TT, _ = J.build_WTT_validada(criterios)
+    r = criterios.index("rhoIsp")
+    assert W_TT.shape == (5, 5) and W_TT[r, r] == 1.0
+    assert np.allclose(W_TT.sum(axis=0), 1.0)

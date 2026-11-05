@@ -38,7 +38,7 @@ def beneficio(
       com sinal invertido, ``g = -δ²`` (``forma_residuo="quadrado"``, Eq. 30
       do artigo) ou ``g = -|δ|`` (``"absoluto"``);
     * ``rhoIsp``: maximizar, ``g = rhoIsp``;
-    * ``pcmax``: minimizar, ``g = -pcmax``;
+    * ``pcmax``: minimizar, ``g = -pcmax`` (só na variante de 7 critérios);
     * ``eta``: maximizar, ``g = eta``.
     """
 
@@ -66,11 +66,12 @@ def build_payoff_tensor(
     kappa_cf: tuple[float, float, float],
     model: BallisticModel,
     forma_residuo: str = "quadrado",
+    criterios: tuple[str, ...] = config.CRITERIOS,
 ) -> tuple[np.ndarray, dict[str, dict[str, np.ndarray]]]:
     """Constrói o tensor de payoff bruto (não normalizado).
 
     Retorna ``(X, atributos_por_estado)`` em que ``X`` tem shape
-    ``(R=7, n, J=3)`` com ``X[r, k, j] = g_r(d_k, theta_j)``, e
+    ``(R, n, J=3)``, ``R = len(criterios)``, com ``X[r, k, j] = g_r(d_k, theta_j)``, e
     ``atributos_por_estado`` é o dicionário ``{estado: {criterio: array}}``
     devolvido por :func:`tg_robust.scenarios.propagate_states` (útil para
     diagnóstico e testes de identidade).
@@ -78,13 +79,13 @@ def build_payoff_tensor(
 
     atributos_por_estado = propagate_states(designs, kappa_c, kappa_cf, model)
     n = len(designs)
-    R = config.N_CRITERIOS
+    R = len(criterios)
     J = len(config.ESTADOS_NOMES)
 
     X = np.empty((R, n, J), dtype=float)
     for j, estado in enumerate(config.ESTADOS_NOMES):
         attrs = atributos_por_estado[estado]
-        for r, criterio in enumerate(config.CRITERIOS):
+        for r, criterio in enumerate(criterios):
             X[r, :, j] = beneficio(criterio, attrs, requisitos, forma_residuo)
 
     return X, atributos_por_estado

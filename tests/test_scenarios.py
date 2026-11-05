@@ -52,7 +52,7 @@ def test_identidade_pcmax_depende_apenas_de_kc(designs):
 def test_estado_nominal_nao_altera_nada(designs):
     model = SurrogateBallistics()
     saida = model(designs, kc=1.0, kcf=1.0)
-    for criterio in config.CRITERIOS:
+    for criterio in config.ATRIBUTOS:
         assert np.allclose(saida[criterio], designs[criterio].to_numpy())
 
 
@@ -75,7 +75,7 @@ def test_propagate_states_tres_estados(designs):
     resultado = propagate_states(designs, config.KAPPA_C_REF, config.KAPPA_CF_REF, SurrogateBallistics())
     assert set(resultado.keys()) == set(config.ESTADOS_NOMES)
     for estado in config.ESTADOS_NOMES:
-        assert set(resultado[estado].keys()) == set(config.CRITERIOS)
+        assert set(resultado[estado].keys()) == set(config.ATRIBUTOS)
 
 
 # ─── EscalaQuaseEstacionaria (tabela do modeFRONTIER) ─────────────────────

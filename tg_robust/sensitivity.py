@@ -198,7 +198,7 @@ def sweep_anp(
                 a, b = labels[i], labels[k]
                 for step in (-1, +1):
                     novos_julgamentos = J.perturb(por_alvo, alvo, a, b, step)
-                    W_TT_novo = J.WTT_de_julgamentos(novos_julgamentos)
+                    W_TT_novo = J.WTT_de_julgamentos(novos_julgamentos, ref.cfg.criterios)
 
                     g_por_perfil_novo = {
                         p: anp.profile_limit_closed(W_AT_por_perfil[p], W_TT_novo, ref.cfg.gamma_anp, q0)[0]
@@ -270,7 +270,8 @@ def sweep_lambda(
         kappa_cf_novo = config.kappa_escalado(config.KAPPA_CF_REF, lam)
 
         X_novo, atributos_novo = stage1.build_payoff_tensor(
-            ref.designs, ref.cfg.requisitos, kappa_c_novo, kappa_cf_novo, model, ref.cfg.globais.forma_residuo
+            ref.designs, ref.cfg.requisitos, kappa_c_novo, kappa_cf_novo, model, ref.cfg.globais.forma_residuo,
+            ref.cfg.criterios,
         )
         X_norm_novo = stage1.common_minmax(X_novo)
         linhas.append(
@@ -411,7 +412,8 @@ def sweep_residuo(ref: Result, formas: tuple[str, ...] = config.FORMAS_RESIDUO) 
     linhas = []
     for forma in formas:
         X_novo, _ = stage1.build_payoff_tensor(
-            ref.designs, ref.cfg.requisitos, ref.cfg.kappa_c, ref.cfg.kappa_cf, ref.modelo_balistico, forma
+            ref.designs, ref.cfg.requisitos, ref.cfg.kappa_c, ref.cfg.kappa_cf, ref.modelo_balistico, forma,
+            ref.cfg.criterios,
         )
         globais = replace(ref.cfg.globais, forma_residuo=forma)
         linhas.append(

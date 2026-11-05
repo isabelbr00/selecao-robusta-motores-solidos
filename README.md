@@ -1,5 +1,10 @@
 # tg_robust — Seleção Robusta Pós-Pareto de Motores Sólidos
 
+Critérios (padrão): `Mp`, `tb`, `It`, `F`, `rhoIsp`, `eta`. `pcmax` não é critério:
+atua só no filtro de FS e no índice de custo. Os 7 atributos (com `pcmax`) continuam
+lidos e propagados pelos estados; `--criterios 7` volta a pontuar `pcmax` e
+`--criterios 5` usa os critérios do artigo (sem `pcmax` nem `eta`).
+
 Implementação computacional da metodologia do Capítulo 3 da TG
 (`../cap3_metodologia_revisado.tex`, fonte da verdade): seleção pós-Pareto de
 motores sólidos combinando critérios de decisão sob incerteza estrita
@@ -49,6 +54,7 @@ python run_pipeline.py --stage 2 --csv ../gerador_pareto/dados/pareto_estagio2.c
 #   --b-cer B                             (padrão: 1.0 PROVISÓRIO, com aviso)
 #   --forma-residuo {quadrado,absoluto}   (benefício de Mp, tb, It, F: -δ² (padrão) ou -|δ|)
 #   --sem-teto-custo                      (rho = inf em todos os perfis)
+#   --criterios {5,6,7}                   (padrão: 6; a W_TT é restrita aos critérios)
 ```
 
 Sem `--csv`, o pipeline usa **dados sintéticos** (`tg_robust/data.py:synthetic_designs`),
@@ -84,7 +90,7 @@ modeFRONTIER); nos fronts de teste (sem `rho`), $p_{c,\max}(\theta_1)\,R_c^2 L_t
 
 O **vencedor de cada perfil** é o argmax de $g^{(p)}$ (sub-rede ANP do perfil,
 a mesma que entra na síntese de $d^*$) restrito a $\mathcal{F}^{(p)}$.
-$V^{(p)}$ (média simples dos 7 critérios, pesos iguais) é mantido só como
+$V^{(p)}$ (média simples dos critérios, pesos iguais) é mantido só como
 referência "sem interdependência", como no AHP original.
 
 ## Onde plugar os dados reais
@@ -93,7 +99,7 @@ Os arquivos `../data/pareto_estagio_*.csv` são da metodologia anterior e
 **não devem ser usados**. Os dados reais de Nascimento et al. (2022) precisam
 trazer, por design:
 
-1. os 7 critérios por estado, em colunas `<criterio>_theta{1,2,3}`
+1. os 7 atributos por estado, em colunas `<criterio>_theta{1,2,3}`
    (`tb`, `It`, `F`, `rho_isp`, `pcmax`) mais `Mp` e `eta_v` — mesmo
    formato de `../gerador_pareto/dados/` —, **ou** só os valores nominais e um
    modelo de balística (`--balistica`) para calcular os estados;
@@ -130,6 +136,13 @@ modelo é fornecido, usa-se `scenarios.EstadosPrecomputados` e a varredura de λ
 `SurrogateBallistics`, que aplica as identidades analíticas da Seção 3.3.1 —
 o "FALLBACK" mencionado no `.tex`.
 
+## Julgamentos de $W_{TT}$
+
+`judgments.INFLUENCIAS` traz as relações validadas pelo orientador, sobre os 7
+atributos. `build_WTT` usa só as relações entre os critérios da variante e
+renormaliza cada coluna; coluna sem influenciador recebe auto-laço (no padrão,
+`rhoIsp`, antes influenciado apenas por `pcmax`).
+
 ## Regressão contra a versão anterior às restrições
 
 `tests/test_regressao.py` compara, com FS = 1 e ρ = ∞, os resultados atuais com
@@ -145,7 +158,7 @@ tg_robust/
     data.py         # load_designs, synthetic_designs, validação de restrições
     scenarios.py    # BallisticModel (interface) + SurrogateBallistics + propagate_states
     stage1.py       # benefício, normalização comum/por-estado, Wald/Savage/Hurwicz
-    judgments.py    # Saaty: from_intensities, consistência (CR), perturb, W_TT placeholder
+    judgments.py    # Saaty: from_intensities, consistência (CR), perturb, W_TT validada
     anp.py          # W_AT, limite fechado (solve), limite por potências (verificação), síntese
     pipeline.py      # run(cfg, designs, model) -> Result
     baseline.py     # AHP de pesos iguais (aproximação, 5 objetivos, estado nominal)
@@ -183,11 +196,8 @@ criado. Resumo:
    Nascimento et al. (2022) ainda precisam ser obtidos/confirmados.
 2. **Scripts de balística interna** do orientador — opcional; na ausência,
    usa-se `SurrogateBallistics` (identidades analíticas).
-3. **Julgamentos de `W_TT`** (`judgments.PLACEHOLDER_INFLUENCIAS`) — rascunho
-   provisório, a validar com o orientador (acoplamentos físicos reais entre
-   os 7 critérios).
-4. **$\alpha$ de Hurwicz** (referência 0,8) — confirmar a postura de risco do
+3. **$\alpha$ de Hurwicz** (referência 0,8) — confirmar a postura de risco do
    perfil *New Space* adotada.
-5. **Margens de $c^{*}$ e $C_F$** — valores de $\kappa$ (Tabela "cenarios")
+4. **Margens de $c^{*}$ e $C_F$** — valores de $\kappa$ (Tabela "cenarios")
    vêm diretamente do texto do artigo reportado no `.tex`; confirmar se são
    as margens finais a usar.

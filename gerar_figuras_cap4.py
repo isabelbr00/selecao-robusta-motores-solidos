@@ -189,7 +189,7 @@ class Estagio:
                 f"({rc.get('modelo_balistico')}); passe --balistica."
             )
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # avisos (b provisório, W_TT placeholder) já emitidos pelo run_pipeline
+            warnings.simplefilter("ignore")  # avisos (b provisório) já emitidos pelo run_pipeline
             self.r: pipeline.Result = pipeline.run(self.cfg, designs, model=model)
 
         self.ids = self.r.design_ids
@@ -248,6 +248,7 @@ def _config_de_json(d: dict) -> config.Config:
     return config.Config(
         estagio=int(d["estagio"]),
         seed=int(d["seed"]),
+        criterios=tuple(d.get("criterios", config.ATRIBUTOS)),  # execuções anteriores à opção usavam os 7
         perfis=perfis,
         globais=config.ConfigGlobal(
             p_lim=float(g["p_lim"]),
@@ -284,8 +285,8 @@ def legenda_vencedores(e: Estagio, venc: dict[str, int | None]) -> dict[str, str
 # ─────────────────────────────────────────────────────────────────────────
 def fig_coord_paralelas(estagios: list[Estagio]):
     fig, eixos = paineis(estagios, 3.4, sharey=True)
-    x = np.arange(config.N_CRITERIOS)
     for ax, e in zip(eixos, estagios):
+        x = np.arange(len(e.cfg.criterios))
         Y = e.r.X_norm[:, :, 0]  # (R, n): benefício normalizado (min-max comum aos 3 estados) em θ1
         ax.plot(x, Y, color=COR_FUNDO, lw=0.4, alpha=0.35, zorder=1)
         venc = e.vencedores()
@@ -305,8 +306,8 @@ def fig_coord_paralelas(estagios: list[Estagio]):
             ax.plot(x, Y[:, k_star], color=COR_DSTAR, lw=1.0, ls="--", label=f"d*: {e.ids[k_star]}", zorder=3)
         for xi in x:
             ax.axvline(xi, color="0.6", lw=0.6, zorder=0)
-        ax.set_xticks(x, [ROTULO_CRITERIO[c] for c in config.CRITERIOS])
-        ax.set_xlim(-0.2, config.N_CRITERIOS - 0.8)
+        ax.set_xticks(x, [ROTULO_CRITERIO[c] for c in e.cfg.criterios])
+        ax.set_xlim(-0.2, len(e.cfg.criterios) - 0.8)
         ax.set_ylim(-0.03, 1.03)
         ax.spines["bottom"].set_visible(False)
         virgula(ax, "y")
@@ -318,13 +319,13 @@ def fig_coord_paralelas(estagios: list[Estagio]):
 
 def fig_pesos_criterios(estagios: list[Estagio]):
     fig, eixos = paineis(estagios, 2.8, sharey=True)
-    x = np.arange(config.N_CRITERIOS)
     w = 0.38
     for ax, e in zip(eixos, estagios):
-        pesos = e.csv("pesos_efetivos.csv").set_index("criterio").loc[list(config.CRITERIOS)]
+        x = np.arange(len(e.cfg.criterios))
+        pesos = e.csv("pesos_efetivos.csv").set_index("criterio").loc[list(e.cfg.criterios)]
         ax.bar(x - w / 2, pesos["q0"], w, color="0.75", label="$q_0$ (a priori)")
         ax.bar(x + w / 2, pesos["q"], w, color="0.25", label="$q$ (efetivo)")
-        ax.set_xticks(x, [ROTULO_CRITERIO[c] for c in config.CRITERIOS])
+        ax.set_xticks(x, [ROTULO_CRITERIO[c] for c in e.cfg.criterios])
         virgula(ax, "y")
         titulo_estagio(ax, e.estagio, f"$\\gamma$ = {fmt(e.cfg.gamma_anp, 1)}")
     eixos[0].set_ylabel("Peso do critério")
@@ -774,7 +775,7 @@ def tabela_comparacao(estagios: list[Estagio]) -> pd.DataFrame:
     for e in estagios:
         k = e.r.d_star
         nominal = e.r.atributos_por_estado[config.ESTADOS_NOMES[0]]
-        for c in config.CRITERIOS:
+        for c in config.ATRIBUTOS:
             req = getattr(e.cfg.requisitos, c) if c in config.CRITERIOS_RESIDUO else np.nan
             linhas.append(
                 {
