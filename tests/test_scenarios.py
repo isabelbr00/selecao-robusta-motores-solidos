@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from tg_robust import data
-from tg_robust.scenarios import SurrogateBallistics, propagate_states
-from tg_robust import config
+from selecao_robusta import data
+from selecao_robusta.scenarios import SurrogateBallistics, propagate_states
+from selecao_robusta import config
 
 
 @pytest.fixture
@@ -79,7 +79,7 @@ def test_propagate_states_tres_estados(designs):
 
 
 # ─── EscalaQuaseEstacionaria (tabela do modeFRONTIER) ─────────────────────
-from tg_robust.scenarios import EscalaQuaseEstacionaria  # noqa: E402
+from selecao_robusta.scenarios import EscalaQuaseEstacionaria  # noqa: E402
 
 
 @pytest.fixture

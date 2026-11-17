@@ -1,7 +1,6 @@
 """Estágio 2: Processo Analítico em Rede (ANP).
 
-Implementa os blocos da supermatriz (Seção "Elicitação de Julgamentos e
-Construção da Supermatriz" da TG), o limite em forma fechada (preferido,
+Implementa os blocos da supermatriz, o limite em forma fechada (preferido,
 via ``np.linalg.solve``), o limite por potências sucessivas da supermatriz
 completa (verificação opcional) e a síntese final entre perfis.
 
@@ -214,8 +213,8 @@ def run_anp(
     """Executa o Estágio 2 completo a partir das pontuações do Estágio 1.
 
     ``v_por_perfil`` é ``{perfil: v^(p)}`` (shape ``(n, R)`` cada, vindo de
-    :func:`tg_robust.stage1.compute_profile_scores`). ``chi_por_perfil`` traz
-    as máscaras de $\\mathcal{F}^{(p)}$ (:mod:`tg_robust.admissibility`);
+    :func:`selecao_robusta.stage1.compute_profile_scores`). ``chi_por_perfil`` traz
+    as máscaras de $\\mathcal{F}^{(p)}$ (:mod:`selecao_robusta.admissibility`);
     ``None`` = sem restrições. Perfis com $\\mathcal{F}^{(p)} = \\varnothing$
     são excluídos da síntese (aviso emitido) e ``pi`` é renormalizado entre os
     restantes; se todos forem vazios, lança ``ValueError``. Se

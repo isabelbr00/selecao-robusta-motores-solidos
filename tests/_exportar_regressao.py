@@ -20,9 +20,15 @@ raiz, versao, arq_designs, arq_saida, modo_modelo = sys.argv[1:6]
 sys.path.insert(0, raiz)
 warnings.simplefilter("ignore")
 
-from tg_robust import config, pipeline, sensitivity  # noqa: E402
-from tg_robust import judgments as J  # noqa: E402
-from tg_robust.scenarios import SurrogateBallistics  # noqa: E402
+# a versão anterior às restrições ainda se chama ``tg_robust``
+try:
+    from selecao_robusta import config, pipeline, sensitivity  # noqa: E402
+    from selecao_robusta import judgments as J  # noqa: E402
+    from selecao_robusta.scenarios import SurrogateBallistics  # noqa: E402
+except ImportError:
+    from tg_robust import config, pipeline, sensitivity  # noqa: E402
+    from tg_robust import judgments as J  # noqa: E402
+    from tg_robust.scenarios import SurrogateBallistics  # noqa: E402
 
 KAPPAS = list(zip((1.0, 0.99, 0.98), (1.0, 0.965, 0.93)))
 

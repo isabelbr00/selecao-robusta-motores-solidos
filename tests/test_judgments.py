@@ -3,7 +3,7 @@ import warnings
 import numpy as np
 import pytest
 
-from tg_robust import config, judgments as J
+from selecao_robusta import config, judgments as J
 
 
 def test_snap_to_saaty_scale_valores_exatos():

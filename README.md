@@ -1,4 +1,4 @@
-# tg_robust — Seleção Robusta Pós-Pareto de Motores Sólidos
+# Seleção Robusta de Motores Sólidos
 
 Implementação computacional da metodologia do Trabalho de Graduação (TG) de
 Isabel Colares Brasil: seleção pós-Pareto de motores-foguete a propelente
@@ -18,8 +18,8 @@ lidos e propagados pelos estados; `--criterios 7` volta a pontuar `pcmax` e
 Python 3.11 ou superior.
 
 ```bash
-git clone <url-do-repositorio> tg_robust
-cd tg_robust
+git clone https://github.com/isabelbr00/selecao-robusta-motores-solidos.git
+cd selecao-robusta-motores-solidos
 pip install -r requirements.txt
 ```
 
@@ -34,12 +34,12 @@ python run_pipeline.py --stage 1 --out resultados_estagio1 --seed 0
 python run_pipeline.py --stage 2 --out resultados_estagio2 --seed 0
 
 # dados do artigo (1º estágio, tabela do modeFRONTIER — ver "Dados de entrada")
-# e figuras do Cap. 4 (um painel por figura; --dados2/--resultados2 acrescentam o 2º estágio):
+# e figuras (um painel por figura; --dados2/--resultados2 acrescentam o 2º estágio):
 python run_pipeline.py --stage 1 \
     --csv "data/modeFrontier 1st Stage Us Propellants Designs Table.csv" --out resultados_estagio1
-python gerar_figuras_cap4.py \
+python gerar_figuras.py \
     --dados1 "data/modeFrontier 1st Stage Us Propellants Designs Table.csv" \
-    --resultados1 resultados_estagio1 --out figuras_cap4
+    --resultados1 resultados_estagio1 --out figuras
 
 # com um simulador de balística interna próprio (habilita a varredura de λ):
 python run_pipeline.py --stage 2 --csv designs.csv --balistica simulador.py --out resultados_estagio2
@@ -53,7 +53,7 @@ python run_pipeline.py --stage 2 --csv designs.csv --balistica simulador.py --ou
 #   --criterio-fs-alvo                    (acrescenta a aderência ao FS alvo do perfil)
 ```
 
-Sem `--csv`, o pipeline usa **dados sintéticos** (`tg_robust/data.py:synthetic_designs`),
+Sem `--csv`, o pipeline usa **dados sintéticos** (`selecao_robusta/data.py:synthetic_designs`),
 explicitamente marcados como tal (aviso no terminal, coluna `sintetico` e
 `run_config.json:dados_sinteticos=true`). **Não são dados reais do artigo.**
 
@@ -116,7 +116,7 @@ Outros conjuntos de designs são aceitos se trouxerem, por design:
 
 ## Modelo de balística interna
 
-`tg_robust/scenarios.py` define a interface `BallisticModel`:
+`selecao_robusta/scenarios.py` define a interface `BallisticModel`:
 
 ```python
 class BallisticModel(Protocol):
@@ -154,8 +154,8 @@ $v^{(p)}$, normalizada por perfil, com auto-laço em $W_{TT}$.
 ## Arquitetura
 
 ```
-tg_robust/
-  tg_robust/
+selecao-robusta-motores-solidos/
+  selecao_robusta/
     config.py        # Config (dataclass imutável) + constantes dos critérios/requisitos
     data.py          # load_designs, synthetic_designs, validação de restrições
     scenarios.py     # BallisticModel (interface) + modelos de estados + propagate_states
@@ -166,9 +166,9 @@ tg_robust/
     baseline.py      # AHP de pesos iguais (aproximação, 5 objetivos, estado nominal)
     admissibility.py # restrições por perfil (FS, teto de custo), F^(p) e resumo
     sensitivity.py   # varreduras de sensibilidade + estabilidade
-  run_pipeline.py        # CLI
-  gerar_figuras_cap4.py  # figuras do Cap. 4 a partir das saídas do CLI
-  tests/                 # pytest
+  run_pipeline.py   # CLI
+  gerar_figuras.py  # figuras a partir das saídas do CLI
+  tests/            # pytest
 ```
 
 Sem estado global mutável; qualquer variação de parâmetro cria uma nova
@@ -191,7 +191,8 @@ estão disponíveis.
 
 `tests/test_regressao.py` compara, com FS = 1 e ρ = ∞, os resultados atuais com
 os de uma versão anterior às restrições (igualdade exata). Só roda se a
-variável `TG_ROBUST_ANTES` apontar para a raiz dessa versão.
+variável `TG_ROBUST_ANTES` apontar para a raiz dessa versão (pacote ainda
+chamado `tg_robust`).
 
 ## Licença
 

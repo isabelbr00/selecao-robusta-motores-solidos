@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tg_robust import config, data, pipeline, sensitivity
+from selecao_robusta import config, data, pipeline, sensitivity
 
 
 @pytest.fixture

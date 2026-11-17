@@ -1,12 +1,11 @@
 """Configuração e constantes do pipeline de seleção robusta de motores sólidos.
 
-Centraliza, em um único lugar, os parâmetros de referência descritos no
-Capítulo 3 da TG (``cap3_metodologia_revisado.tex``): requisitos propulsivos
+Centraliza, em um único lugar, os parâmetros de referência da metodologia:
+requisitos propulsivos
 por estágio, fatores dos estados da natureza, parâmetros de decisão
 (γ do ANP), os perfis organizacionais (:class:`Perfil`: regra de decisão,
-α de Hurwicz, FS, teto de custo ρ e peso π — Seção 3.3.4 de
-``TG_revisao_FS_custo.tex``), os parâmetros globais das restrições
-(:class:`ConfigGlobal`: p_lim, expoente ``b`` da CER, referência do custo) e o mapeamento Tabela 6 de tipo de
+α de Hurwicz, FS, teto de custo ρ e peso π), os parâmetros globais das restrições
+(:class:`ConfigGlobal`: p_lim, expoente ``b`` da CER, referência do custo) e o mapeamento de tipo de
 propelente → expoente da lei de queima ``n``.
 
 Não há estado global mutável: ``Config`` é uma dataclass congelada
@@ -106,7 +105,7 @@ KAPPA_CF_REF: tuple[float, float, float] = (1.0, 0.965, 0.93)
 GAMMA_ANP_REF: float = 0.5
 
 # ─────────────────────────────────────────────────────────────────────────
-# Perfis organizacionais (Seções 2.4.3 e 3.3.4 de TG_revisao_FS_custo.tex).
+# Perfis organizacionais.
 # Cada perfil reúne sua regra de decisão e suas restrições de admissibilidade
 # (FS e teto de custo rho, aplicados como LIMIARES, não como critérios
 # pontuados). O código trata qualquer lista de perfis com a mesma lógica.

@@ -1,9 +1,9 @@
 """Orquestração do pipeline completo: Estágio 1 + Estágio 2 (ANP).
 
-:func:`run` recebe a configuração (:class:`tg_robust.config.Config`), os
-designs Pareto (:class:`pandas.DataFrame`, de :mod:`tg_robust.data`) e,
-opcionalmente, um modelo de balística interna (:class:`tg_robust.scenarios.BallisticModel`;
-por padrão usa o substituto :class:`~tg_robust.scenarios.SurrogateBallistics`),
+:func:`run` recebe a configuração (:class:`selecao_robusta.config.Config`), os
+designs Pareto (:class:`pandas.DataFrame`, de :mod:`selecao_robusta.data`) e,
+opcionalmente, um modelo de balística interna (:class:`selecao_robusta.scenarios.BallisticModel`;
+por padrão usa o substituto :class:`~selecao_robusta.scenarios.SurrogateBallistics`),
 e devolve um :class:`Result` com todos os artefatos intermediários
 necessários para as saídas do CLI (``run_pipeline.py``) e para a análise de
 sensibilidade.
@@ -114,7 +114,7 @@ def run(
     """Executa o Estágio 1 e o Estágio 2 (ANP) para os ``designs`` dados.
 
     Usa os critérios de ``cfg.criterios`` e a ``W_TT`` validada restrita a eles
-    (:func:`tg_robust.judgments.build_WTT_validada`).
+    (:func:`selecao_robusta.judgments.build_WTT_validada`).
     """
 
     model = model if model is not None else SurrogateBallistics()

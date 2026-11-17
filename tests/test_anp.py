@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from tg_robust import anp, config, data, judgments as J, stage1
-from tg_robust.scenarios import SurrogateBallistics
+from selecao_robusta import anp, config, data, judgments as J, stage1
+from selecao_robusta.scenarios import SurrogateBallistics
 
 
 @pytest.fixture

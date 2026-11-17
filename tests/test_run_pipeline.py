@@ -127,7 +127,7 @@ def test_cli_dados_reais_um_estagio_e_figuras(tmp_path):
 
     figuras = tmp_path / "figuras"
     resultado = subprocess.run(
-        [sys.executable, str(RAIZ / "gerar_figuras_cap4.py"), "--dados1", str(CSV_REAL_1),
+        [sys.executable, str(RAIZ / "gerar_figuras.py"), "--dados1", str(CSV_REAL_1),
          "--resultados1", str(out_dir), "--out", str(figuras)],
         capture_output=True, text=True, timeout=300,
     )

@@ -291,7 +291,7 @@ def load_designs(path: str | Path, *, levantar_erro_restricoes: bool = False) ->
     (colunas ``<criterio>_theta{1,2,3}``, como em ``gerador_pareto/dados``),
     os três estados são exigidos e ``theta1`` vira o valor nominal; os
     estados podem então ser lidos por
-    :class:`tg_robust.scenarios.EstadosPrecomputados`. Uma coluna opcional
+    :class:`selecao_robusta.scenarios.EstadosPrecomputados`. Uma coluna opcional
     ``propelente`` (tipo 1-4) ou ``nexp`` é usada para a propagação de
     cenários; na ausência de ambas, aplica-se o padrão com aviso (ver
     :func:`resolver_nexp`). As restrições de projeto são validadas via

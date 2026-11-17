@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tg_robust import admissibility, anp, config, data, pipeline, scenarios, sensitivity, stage1
-from tg_robust import judgments as J
+from selecao_robusta import admissibility, anp, config, data, pipeline, scenarios, sensitivity, stage1
+from selecao_robusta import judgments as J
 
 GERADOR = Path(__file__).resolve().parents[2] / "gerador_pareto"
 requer_gerador = pytest.mark.skipif(not GERADOR.exists(), reason="gerador_pareto/ ausente")

@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tg_robust import baseline, config, data
+from selecao_robusta import baseline, config, data
 
 
 def test_ahp_baseline_retorna_ranking_valido():

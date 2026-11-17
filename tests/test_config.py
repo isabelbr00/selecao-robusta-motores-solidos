@@ -3,7 +3,7 @@ import math
 
 import pytest
 
-from tg_robust import config
+from selecao_robusta import config
 
 
 def test_requisitos_por_estagio():

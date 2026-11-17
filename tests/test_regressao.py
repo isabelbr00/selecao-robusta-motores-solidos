@@ -1,7 +1,7 @@
 """Regressão: com FS = 1 e rho = inf, o código atual reproduz o anterior às restrições.
 
 Requer a versão anterior do pacote em um diretório indicado pela variável de
-ambiente ``TG_ROBUST_ANTES`` (raiz contendo ``tg_robust/``); sem ela, os
+ambiente ``TG_ROBUST_ANTES`` (raiz contendo o pacote ``tg_robust/``); sem ela, os
 testes são pulados. Cada versão roda em um subprocesso próprio
 (``_exportar_regressao.py``) sobre os mesmos designs, e os resultados devem
 ser IDÊNTICOS (igualdade exata de arrays e tabelas).
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tg_robust import data
+from selecao_robusta import data
 
 RAIZ = Path(__file__).resolve().parent.parent
 EXPORTADOR = Path(__file__).resolve().parent / "_exportar_regressao.py"

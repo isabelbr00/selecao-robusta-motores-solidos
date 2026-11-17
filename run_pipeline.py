@@ -7,7 +7,7 @@ Uso:
     python run_pipeline.py --stage 2 --csv caminho/para/designs.csv \\
         --balistica caminho/para/simulador.py --out resultados_estagio2
 
-Sem ``--csv``, gera designs sintéticos (:func:`tg_robust.data.synthetic_designs`)
+Sem ``--csv``, gera designs sintéticos (:func:`selecao_robusta.data.synthetic_designs`)
 marcados explicitamente como tal — ver aviso no terminal e a coluna
 ``sintetico`` / o campo ``dados_sinteticos`` em ``run_config.json``.
 
@@ -37,7 +37,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from tg_robust import admissibility, baseline, config, data, pipeline, scenarios, sensitivity  # noqa: E402
+from selecao_robusta import admissibility, baseline, config, data, pipeline, scenarios, sensitivity  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("run_pipeline")

@@ -1,27 +1,27 @@
 #!/usr/bin/env python
-"""Figuras do Capítulo 4 a partir dos resultados do pipeline (1º e, opcionalmente, 2º estágio).
+"""Figuras a partir dos resultados do pipeline (1º e, opcionalmente, 2º estágio).
 
 Uso com os dados reais do 1º estágio (um painel por figura):
     python run_pipeline.py --stage 1 \
         --csv "data/modeFrontier 1st Stage Us Propellants Designs Table.csv" --out resultados_estagio1
-    python gerar_figuras_cap4.py \
+    python gerar_figuras.py \
         --dados1 "data/modeFrontier 1st Stage Us Propellants Designs Table.csv" \
-        --resultados1 resultados_estagio1 --out figuras_cap4
+        --resultados1 resultados_estagio1 --out figuras
 
 Uso com dois estágios:
     python run_pipeline.py --stage 1 --csv estagio1.csv --out resultados_estagio1
     python run_pipeline.py --stage 2 --csv estagio2.csv --out resultados_estagio2
-    python gerar_figuras_cap4.py \\
+    python gerar_figuras.py \\
         --dados1 estagio1.csv --resultados1 resultados_estagio1 \\
         --dados2 estagio2.csv --resultados2 resultados_estagio2 \\
-        --out figuras_cap4
+        --out figuras
 
 O script só LÊ: os CSVs de saída de ``run_pipeline.py`` (``--resultadosN``) e o
-:class:`tg_robust.pipeline.Result`, reconstruído com ``pipeline.run`` a partir do
+:class:`selecao_robusta.pipeline.Result`, reconstruído com ``pipeline.run`` a partir do
 CSV de designs (``--dadosN``) e da configuração gravada em ``run_config.json``
 (perfis, FS, rho, b, referência do custo, γ, κ). O SHA-256 do CSV e o ``d*``
 são conferidos contra ``run_config.json``, e ``g`` contra ``ranking_final.csv``.
-Nada do pacote ``tg_robust`` é alterado.
+Nada do pacote ``selecao_robusta`` é alterado.
 
 Sem ``--dados2``/``--resultados2``, cada figura tem um único painel (1º estágio).
 
@@ -55,7 +55,7 @@ from scipy.stats import pearsonr, spearmanr  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from tg_robust import anp, config, data, pipeline  # noqa: E402
+from selecao_robusta import anp, config, data, pipeline  # noqa: E402
 import run_pipeline  # noqa: E402  (só escolher_modelo, para usar o mesmo modelo de balística da execução)
 
 logging.getLogger("fontTools").setLevel(logging.WARNING)
@@ -99,7 +99,7 @@ plt.rcParams.update(
 LARGURA = 7.0  # polegadas (largura útil típica de página A4 no LaTeX)
 LARGURA_UM_PAINEL = 4.6  # figura com um só estágio
 
-# Recorte superior (bp) que o Cap4/cap4.tex aplica a cada figura (trim=0 0 0 Xbp): com um
+# Recorte superior (bp) que o documento LaTeX da TG aplica a cada figura (trim=0 0 0 Xbp): com um
 # só estágio as figuras não têm título, e essa faixa fica em branco no topo do PDF para
 # que o recorte não corte o gráfico.
 RECORTE_SUPERIOR_TEX = {
@@ -861,7 +861,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--resultados1", required=True, type=Path, help="Diretório --out do run_pipeline, 1º estágio")
     p.add_argument("--resultados2", type=Path, default=None, help="Diretório --out do run_pipeline, 2º estágio (opcional)")
     p.add_argument("--balistica", default=None, help="Simulador .py (padrão: o de run_config.json)")
-    p.add_argument("--out", type=Path, default=Path("figuras_cap4"), help="Pasta das figuras (padrão: figuras_cap4)")
+    p.add_argument("--out", type=Path, default=Path("figuras"), help="Pasta das figuras (padrão: figuras)")
     return p.parse_args(argv)
 
 

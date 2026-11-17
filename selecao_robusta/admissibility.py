@@ -1,7 +1,6 @@
-"""Restrições de admissibilidade por perfil organizacional (Seção 3.3.4).
+"""Restrições de admissibilidade por perfil organizacional.
 
-Implementa a seção "Restrições de Admissibilidade por Perfil Organizacional"
-de ``TG_revisao_FS_custo.tex``. Cada perfil ``p`` (:class:`config.Perfil`)
+Cada perfil ``p`` (:class:`config.Perfil`)
 impõe dois **limiares** (não critérios pontuados) que definem o conjunto
 admissível $\\mathcal{F}^{(p)}$:
 
@@ -13,7 +12,7 @@ admissível $\\mathcal{F}^{(p)}$:
   densidade ``rho`` do propelente e ``eta``; caso contrário — fronts de
   teste —, ``base_k = pcmax(d_k, theta_1) Rc_k^2 Lt_k``) e
   ``ref`` = mediana (padrão) ou mínimo de ``base_d`` sobre **todos** os
-  designs do estágio. A opção "mediana" diverge do .tex (que usa o mínimo):
+  designs do estágio. A opção "mediana" é o padrão porque,
   com o mínimo, os tetos eliminam 80–99% dos designs nos fronts de teste.
   Só o estado nominal entra no custo (o envelope é dimensionado uma vez).
   ``c_k`` não depende do perfil; ``rho_p = inf`` retira o teto de custo.
@@ -129,7 +128,7 @@ def conjuntos_admissiveis(
     """Calcula $\\mathcal{F}^{(p)}$ para cada perfil da lista (Eq. "conjunto_viavel").
 
     ``atributos_por_estado`` é a saída de
-    :func:`tg_robust.scenarios.propagate_states` (``pcmax`` por estado vem do
+    :func:`selecao_robusta.scenarios.propagate_states` (``pcmax`` por estado vem do
     modelo de balística interna); ``designs`` fornece ``Mp``, ``rho`` e
     ``eta`` (ou ``Rc`` e ``Lt``) para a base do custo (:func:`base_custo`).
     """

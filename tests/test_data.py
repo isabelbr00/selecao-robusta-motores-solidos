@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tg_robust import config, data
+from selecao_robusta import config, data
 
 
 def test_synthetic_designs_colunas_e_flag():

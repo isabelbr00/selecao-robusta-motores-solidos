@@ -1,7 +1,7 @@
-"""Análise de sensibilidade transversal (Seção "Análise de Sensibilidade").
+"""Análise de sensibilidade transversal.
 
 Oito varreduras complementares, todas avaliadas contra a execução de
-referência (:class:`tg_robust.pipeline.Result`) e todas respeitando os
+referência (:class:`selecao_robusta.pipeline.Result`) e todas respeitando os
 conjuntos admissíveis $\\mathcal{F}^{(p)}$ da referência (ou recalculados,
 quando a varredura os altera):
 
@@ -11,7 +11,7 @@ quando a varredura os altera):
 4. :func:`sweep_lambda` — magnitude dos estados de incerteza (reexecuta o
    Estágio 1 completo e recalcula $\\mathcal{F}^{(p)}$);
 5. :func:`sweep_restricoes` — fatores de segurança ``FS_p``, tetos de custo
-   ``rho_p`` (item 5 da Seção 3.5 de ``TG_revisao_FS_custo.tex``), referência
+   ``rho_p``, referência
    do índice de custo (mínimo/mediana) e o caso sem restrições
    (``FS=1``, ``rho=inf``). Cada cenário é uma lista de perfis
    (:func:`cenarios_restricoes`), avaliada por :func:`avaliar_cenario`;
@@ -253,7 +253,7 @@ def sweep_lambda(
 
     Usa ``model`` ou, na falta dele, o modelo de balística da referência
     (``ref.modelo_balistico``). Se esse modelo não reexecuta a balística
-    (estados lidos dos dados, :class:`~tg_robust.scenarios.EstadosPrecomputados`),
+    (estados lidos dos dados, :class:`~selecao_robusta.scenarios.EstadosPrecomputados`),
     a varredura é pulada com aviso e devolve um ``DataFrame`` vazio.
     Como ``max_j pcmax`` depende dos estados, $\\mathcal{F}^{(p)}$ é recalculado
     para cada $\\lambda$ com os perfis da referência.

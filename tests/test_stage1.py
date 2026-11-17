@@ -3,8 +3,8 @@ import pandas as pd
 import pytest
 from scipy.stats import rankdata
 
-from tg_robust import config, data, pipeline, stage1
-from tg_robust.scenarios import SurrogateBallistics
+from selecao_robusta import config, data, pipeline, stage1
+from selecao_robusta.scenarios import SurrogateBallistics
 
 
 @pytest.fixture

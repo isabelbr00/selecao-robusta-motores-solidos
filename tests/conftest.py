@@ -1,4 +1,4 @@
-"""Fixtures compartilhadas dos testes do tg_robust."""
+"""Fixtures compartilhadas dos testes do selecao_robusta."""
 
 from __future__ import annotations
 

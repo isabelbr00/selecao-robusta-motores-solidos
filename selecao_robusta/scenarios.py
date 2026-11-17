@@ -1,14 +1,12 @@
 """Estados da natureza e propagação pelo modelo de balística interna.
 
 Define os três estados da natureza $\\Theta = \\{\\theta_1,\\theta_2,\\theta_3\\}$
-(Seção "Definição dos Estados da Natureza" da TG) como fatores
-multiplicativos sobre $c^{*}$ e $C_F$, e a interface :class:`BallisticModel`
+como fatores multiplicativos sobre $c^{*}$ e $C_F$, e a interface :class:`BallisticModel`
 que recalcula os atributos de desempenho de cada design sob um dado estado.
 
-A implementação principal (caminho padrão, usada quando os scripts de
-balística interna do orientador não estão disponíveis) é
-:class:`SurrogateBallistics`, que aplica diretamente as identidades da
-Seção 3.3.1:
+A implementação principal (caminho padrão, usada quando não há um modelo
+de balística interna disponível) é :class:`SurrogateBallistics`, que aplica
+diretamente as identidades analíticas:
 
 * ``pcmax' = pcmax * kp``                          (pressão depende de c*)
 * ``tb'    = tb / kp**n``
@@ -24,8 +22,7 @@ forma correta é ``It * kc * kcf`` (ver identidades testadas em
 Quando o modelo real de balística interna estiver disponível, basta
 implementar :class:`BallisticModel` com a mesma assinatura e passá-lo ao
 pipeline (``pipeline.run(cfg, designs, model=ModeloReal())``). Um simulador
-por design no formato de ``gerador_pareto/balistica.py``
-(``simular(x, k_cstar, k_cf) -> dict``) é adaptado por
+por design no formato (``simular(x, k_cstar, k_cf) -> dict``) é adaptado por
 :class:`AdaptadorSimulador` (carregado com :func:`carregar_simulador`).
 
 Para a tabela do modeFRONTIER (dados reais do artigo, sem a balística),
@@ -79,7 +76,7 @@ class SurrogateBallistics:
     fixas (``Mp`` e ``eta`` não dependem de ``kc``/``kcf``) e aplica as
     identidades descritas no módulo. Requer que ``designs`` tenha a coluna
     ``nexp`` (expoente da lei de queima), resolvida por
-    :func:`tg_robust.data.resolver_nexp`.
+    :func:`selecao_robusta.data.resolver_nexp`.
     """
 
     suporta_reexecucao = True

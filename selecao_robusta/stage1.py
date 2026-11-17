@@ -1,8 +1,8 @@
 """Estágio 1: funções de benefício, matrizes de payoff e critérios de decisão.
 
-Implementa a Seção "Estágio 1" da TG: (i) funções de benefício $g_r$ por
-critério (Tabela "criterios_payoff"); (ii) normalização min-max **comum**
-sobre todos os pares (design, estado) — Eq. "normalizacao" — e, apenas para
+Implementa: (i) funções de benefício $g_r$ por
+critério; (ii) normalização min-max **comum**
+sobre todos os pares (design, estado) e, apenas para
 diagnóstico, a normalização por estado (``per_state_minmax``), que demonstra
 que normalizar cada estado isoladamente elimina o efeito dos cenários;
 (iii) os três critérios de decisão sob incerteza — Wald, Savage e Hurwicz —
@@ -73,7 +73,7 @@ def build_payoff_tensor(
     Retorna ``(X, atributos_por_estado)`` em que ``X`` tem shape
     ``(R, n, J=3)``, ``R = len(criterios)``, com ``X[r, k, j] = g_r(d_k, theta_j)``, e
     ``atributos_por_estado`` é o dicionário ``{estado: {criterio: array}}``
-    devolvido por :func:`tg_robust.scenarios.propagate_states` (útil para
+    devolvido por :func:`selecao_robusta.scenarios.propagate_states` (útil para
     diagnóstico e testes de identidade).
     """
 
