@@ -113,7 +113,9 @@ def test_cli_sem_teto_custo_gera_json_estrito(tmp_path):
     assert all(p["rho"] == "inf" for p in cfg["config"]["perfis"])
 
 
-CSV_REAL_1 = RAIZ.parent / "data" / "modeFrontier 1st Stage Us Propellants Designs Table.csv"
+# a tabela não é distribuída: procurada em data/ do repositório ou em ../data/
+_NOME_CSV_REAL_1 = "modeFrontier 1st Stage Us Propellants Designs Table.csv"
+CSV_REAL_1 = next((d / "data" / _NOME_CSV_REAL_1 for d in (RAIZ, RAIZ.parent) if (d / "data" / _NOME_CSV_REAL_1).exists()), Path("ausente"))
 
 
 @pytest.mark.skipif(not CSV_REAL_1.exists(), reason="tabela real do 1º estágio não disponível")

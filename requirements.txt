@@ -1,0 +1,6 @@
+# Testado com Python 3.11
+numpy>=2.3
+pandas>=2.3
+scipy>=1.17
+matplotlib>=3.10   # só para gerar_figuras_cap4.py
+pytest>=8          # testes

@@ -4,8 +4,8 @@
 Uso:
     python run_pipeline.py --stage 1 --out resultados_estagio1 --seed 0
     python run_pipeline.py --stage 2 --csv caminho/para/designs.csv --out resultados_estagio2
-    python run_pipeline.py --stage 2 --csv ../gerador_pareto/dados/pareto_estagio2.csv \\
-        --balistica ../gerador_pareto/balistica.py --out resultados_teste2
+    python run_pipeline.py --stage 2 --csv caminho/para/designs.csv \\
+        --balistica caminho/para/simulador.py --out resultados_estagio2
 
 Sem ``--csv``, gera designs sintéticos (:func:`tg_robust.data.synthetic_designs`)
 marcados explicitamente como tal — ver aviso no terminal e a coluna
@@ -13,7 +13,7 @@ marcados explicitamente como tal — ver aviso no terminal e a coluna
 
 Modelo de balística (estados θ e varredura de λ):
 * ``--balistica arquivo.py``: simulador ``simular(x, k_cstar, k_cf)`` do arquivo
-  (formato de ``gerador_pareto/balistica.py``) — reexecuta todos os estados;
+  — reexecuta todos os estados;
 * CSV com colunas ``<criterio>_theta{1,2,3}`` e sem ``--balistica``: estados
   lidos dos dados; a varredura de λ é PULADA (com aviso);
 * tabela do modeFRONTIER (dados reais do artigo): leis de escala quase

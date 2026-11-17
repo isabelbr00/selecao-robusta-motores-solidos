@@ -3,19 +3,17 @@
 
 Uso com os dados reais do 1º estágio (um painel por figura):
     python run_pipeline.py --stage 1 \
-        --csv "../data/modeFrontier 1st Stage Us Propellants Designs Table.csv" --out resultados_estagio1
+        --csv "data/modeFrontier 1st Stage Us Propellants Designs Table.csv" --out resultados_estagio1
     python gerar_figuras_cap4.py \
-        --dados1 "../data/modeFrontier 1st Stage Us Propellants Designs Table.csv" \
+        --dados1 "data/modeFrontier 1st Stage Us Propellants Designs Table.csv" \
         --resultados1 resultados_estagio1 --out figuras_cap4
 
-Uso com dois estágios (fronts de TESTE, a partir de ``tg_robust/``):
-    python run_pipeline.py --stage 1 --csv ../gerador_pareto/dados/pareto_estagio1.csv \\
-        --balistica ../gerador_pareto/balistica.py --out resultados_teste1
-    python run_pipeline.py --stage 2 --csv ../gerador_pareto/dados/pareto_estagio2.csv \\
-        --balistica ../gerador_pareto/balistica.py --out resultados_teste2
+Uso com dois estágios:
+    python run_pipeline.py --stage 1 --csv estagio1.csv --out resultados_estagio1
+    python run_pipeline.py --stage 2 --csv estagio2.csv --out resultados_estagio2
     python gerar_figuras_cap4.py \\
-        --dados1 ../gerador_pareto/dados/pareto_estagio1.csv --resultados1 resultados_teste1 \\
-        --dados2 ../gerador_pareto/dados/pareto_estagio2.csv --resultados2 resultados_teste2 \\
+        --dados1 estagio1.csv --resultados1 resultados_estagio1 \\
+        --dados2 estagio2.csv --resultados2 resultados_estagio2 \\
         --out figuras_cap4
 
 O script só LÊ: os CSVs de saída de ``run_pipeline.py`` (``--resultadosN``) e o
@@ -50,6 +48,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib import ticker  # noqa: E402
+from matplotlib.transforms import Bbox  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 from scipy.stats import pearsonr, spearmanr  # noqa: E402
@@ -74,8 +73,8 @@ ROTULO_CRITERIO = {
     "Mp": r"$M_p$",
     "tb": r"$t_b$",
     "It": r"$I_t$",
-    "F": r"$F$",
-    "rhoIsp": r"$\rho I_{sp}$",
+    "F": r"$\bar{F}$",
+    "rhoIsp": r"$\rho_p \times I_{sp}$",
     "pcmax": r"$p_{c,\max}$",
     config.CRITERIO_FS_ALVO: r"$FS_{alvo}$",
     "eta": r"$\eta_v$",
@@ -99,6 +98,19 @@ plt.rcParams.update(
 
 LARGURA = 7.0  # polegadas (largura útil típica de página A4 no LaTeX)
 LARGURA_UM_PAINEL = 4.6  # figura com um só estágio
+
+# Recorte superior (bp) que o Cap4/cap4.tex aplica a cada figura (trim=0 0 0 Xbp): com um
+# só estágio as figuras não têm título, e essa faixa fica em branco no topo do PDF para
+# que o recorte não corte o gráfico.
+RECORTE_SUPERIOR_TEX = {
+    "exclusoes_filtros": 31,
+    "custo_pressao": 32,
+    "pesos_criterios": 30,
+    "top10_final": 22,
+    "concordancia_perfis": 43,
+    "margem_impulso": 32,
+    "coord_paralelas": 20,
+}
 
 
 class DadoAusente(Exception):
@@ -137,10 +149,17 @@ def virgula(ax, eixos: str = "xy") -> None:
         ax.yaxis.set_major_formatter(FormatadorVirgula())
 
 
-def salvar(fig, out: Path, nome: str, gerados: list[Path]) -> None:
+def salvar(fig, out: Path, nome: str, gerados: list[Path], recorte_bp: float = 0.0) -> None:
+    """Grava PDF e PNG; ``recorte_bp`` acrescenta essa faixa em branco acima da caixa justa."""
+
+    caixa = "tight"
+    if recorte_bp:
+        fig.canvas.draw()
+        justa = fig.get_tightbbox(fig.canvas.get_renderer()).padded(plt.rcParams["savefig.pad_inches"])
+        caixa = Bbox.from_extents(justa.x0, justa.y0, justa.x1, justa.y1 + recorte_bp / 72.0)
     for ext in ("pdf", "png"):
         caminho = out / f"{nome}.{ext}"
-        fig.savefig(caminho, dpi=200, bbox_inches="tight")
+        fig.savefig(caminho, dpi=200, bbox_inches=caixa)
         gerados.append(caminho)
     plt.close(fig)
 
@@ -156,8 +175,11 @@ def paineis(estagios: list, altura: float, **kw):
     return fig, list(eixos[0])
 
 
-def titulo_estagio(ax, estagio: int, extra: str = "") -> None:
-    ax.set_title(f"{estagio}º estágio" + (f"\n{extra}" if extra else ""))
+def titulo_estagio(ax, e: "Estagio", estagios: list) -> None:
+    """Identifica o estágio no título só quando há mais de um painel."""
+
+    if len(estagios) > 1:
+        ax.set_title(f"{e.estagio}º estágio")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -312,7 +334,7 @@ def fig_coord_paralelas(estagios: list[Estagio]):
         ax.set_ylim(-0.03, 1.03)
         ax.spines["bottom"].set_visible(False)
         virgula(ax, "y")
-        titulo_estagio(ax, e.estagio)
+        titulo_estagio(ax, e, estagios)
         ax.legend(loc="lower left", frameon=True, framealpha=0.9)
     eixos[0].set_ylabel("Benefício normalizado em $\\theta_1$ (1 = melhor)")
     return fig
@@ -328,7 +350,7 @@ def fig_pesos_criterios(estagios: list[Estagio]):
         ax.bar(x + w / 2, pesos["q"], w, color="0.25", label="$q$ (efetivo)")
         ax.set_xticks(x, [ROTULO_CRITERIO[c] for c in e.cfg.criterios])
         virgula(ax, "y")
-        titulo_estagio(ax, e.estagio, f"$\\gamma$ = {fmt(e.cfg.gamma_anp, 1)}")
+        titulo_estagio(ax, e, estagios)
     eixos[0].set_ylabel("Peso do critério")
     h, l = eixos[0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=2, bbox_to_anchor=(0.5, -0.06), frameon=False)
@@ -350,11 +372,12 @@ def fig_margem_impulso(estagios: list[Estagio]):
             ax.plot(x, desvio, color=CORES_PERFIL[s], ls=ESTILO_PERFIL[s], marker=MARCADOR_PERFIL[s],
                     ms=7 - 1.5 * list(venc).index(s), lw=1.6, label=rot[s])
         ax.axhline(0.0, color="black", lw=0.8)
-        ax.annotate("requisito", xy=(x[-1], 0.0), xytext=(2, 3), textcoords="offset points", fontsize=7)
+        ax.annotate(f"$I_{{t,\\mathrm{{req}}}}$ = {fmt(It_req / 1e7, 3)}$\\times 10^7$ N·s", xy=(x[-1] + 0.45, 0.0),
+                    xytext=(0, 3), textcoords="offset points", ha="right", fontsize=7)
         ax.set_xticks(x, ROTULO_ESTADO)
         ax.set_xlim(-0.3, x[-1] + 0.5)
         virgula(ax, "y")
-        titulo_estagio(ax, e.estagio, f"$I_{{t,\\mathrm{{req}}}}$ = {fmt(It_req / 1e6, 3)}$\\times 10^6$ N·s")
+        titulo_estagio(ax, e, estagios)
         ax.legend(loc="best")
     eixos[0].set_ylabel("Desvio relativo de $I_t$ (%)")
     return fig
@@ -403,7 +426,7 @@ def fig_concordancia_perfis(estagios: list[Estagio]):
             t.set_color(CORES_PERFIL[s])
         for sp in ax.spines.values():
             sp.set_visible(False)
-        titulo_estagio(ax, e.estagio, f"interseção dos top-{k}: {inter_top} de {k}\nn = {n_int} admissíveis a W, S e H")
+        titulo_estagio(ax, e, estagios)
     cb = fig.colorbar(im, ax=eixos, shrink=0.85, label="$\\rho$ de Spearman")
     cb.ax.yaxis.set_major_formatter(FormatadorVirgula())
     return fig
@@ -429,11 +452,11 @@ def fig_custo_pressao(estagios: list[Estagio]):
                 bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
         ax.set_xlabel("$\\max_j\\, p_{c,\\max}(d_k,\\theta_j)$ (MPa)")
         virgula(ax)
-        titulo_estagio(ax, e.estagio, f"ref. = {adm.globais.referencia_custo}, b = {fmt(adm.globais.b_cer, 1)}")
+        titulo_estagio(ax, e, estagios)
     eixos[0].set_ylabel("Índice de custo relativo $c_k$")
     alcas = [Line2D([], [], color=CORES_PERFIL[s], ls=ESTILO_PERFIL[s],
                     label=f"{s}: $p_{{lim}}/FS$ = {fmt(estagios[0].cfg.globais.p_lim / estagios[0].perfil(s).FS, 2)} MPa; "
-                          f"$\\rho$ = {fmt(estagios[0].perfil(s).rho, 2)}")
+                          f"$\\bar{{c}}$ = {fmt(estagios[0].perfil(s).rho, 2)}")
              for s in estagios[0].cfg.siglas]
     h, l = eixos[0].get_legend_handles_labels()
     fig.legend(handles=h[:1] + alcas, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.0), frameon=False)
@@ -466,9 +489,9 @@ def fig_exclusoes_filtros(estagios: list[Estagio]):
                             color="white" if cor == "0.35" else "black", fontsize=8,
                             bbox=dict(fc="white", ec="none", pad=0.6) if hatch else None)
             base = base + v
-        ax.set_xticks(x, [f"{s}\nFS = {fmt(e.perfil(s).FS)}\n$\\rho$ = {fmt(e.perfil(s).rho)}" for s in res.index])
+        ax.set_xticks(x, [f"{s}\nFS = {fmt(e.perfil(s).FS)}\n$\\bar{{c}}$ = {fmt(e.perfil(s).rho)}" for s in res.index])
         ax.set_ylim(0, res["n_designs"].iloc[0] * 1.02)
-        titulo_estagio(ax, e.estagio, f"n = {int(res['n_designs'].iloc[0])} designs")
+        titulo_estagio(ax, e, estagios)
     eixos[0].set_ylabel("Número de designs")
     alcas = [Patch(facecolor="0.85", edgecolor="black", label="admissíveis (cor do perfil)")] + [
         Patch(facecolor=cor, hatch=hatch, edgecolor="black", label=rot) for _, rot, cor, hatch in categorias
@@ -504,7 +527,7 @@ def fig_top10_final(estagios: list[Estagio]):
         ax.set_xlabel("Prioridade global $g$")
         virgula(ax, "x")
         ax.ticklabel_format(axis="x", style="sci", scilimits=(-3, -3))
-        titulo_estagio(ax, e.estagio)
+        titulo_estagio(ax, e, estagios)
     h, l = eixos[0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.1), frameon=False)
     fig.text(0.5, -0.14, "Valor ao fim de cada barra: $g \\times 10^3$; comprimento total $g = \\sum_p \\pi_p\\, g^{(p)}$.",
@@ -648,15 +671,16 @@ def fig_sensibilidade(estagios: list[Estagio], avisos: list[str]):
     parametros = [p for p in PARAMETROS_SENS if p != "nominal"]  # apenas θ1 é um ponto do painel de λ (λ = 0)
     titulos = {"alpha": "$\\alpha$ (Hurwicz)", "pi": "$\\pi$ (pesos dos perfis)", "gamma": "$\\gamma$ (ANP)",
                "lambda": "$\\lambda$ (magnitude dos estados) e apenas $\\theta_1$",
-               "cenarios_fs": "cenários normativos de FS", "rho": "$\\rho$ por perfil",
-               "residuo": "forma do resíduo em $M_p$, $t_b$, $I_t$, $F$"}
+               "cenarios_fs": "cenários normativos de FS", "rho": "$\\bar{c}$ por perfil",
+               "residuo": "forma do resíduo em $M_p$, $t_b$, $I_t$, $\\bar{F}$"}
     y_min = limite_inferior_tau(estagios)  # mesmo eixo y em todos os painéis
     fig, eixos = plt.subplots(len(parametros), len(estagios), figsize=(largura(estagios), 15.0), squeeze=False)
     algum_muda = False
     for c, e in enumerate(estagios):
         for l, par in enumerate(parametros):
             ax = eixos[l, c]
-            ax.set_title(f"{e.estagio}º estágio — {titulos[par]}" if l == 0 else titulos[par], pad=9)
+            com_estagio = len(estagios) > 1 and l == 0
+            ax.set_title(f"{e.estagio}º estágio — {titulos[par]}" if com_estagio else titulos[par], pad=9)
             try:
                 algum_muda |= _painel_sensibilidade(ax, e, par)
             except DadoAusente as exc:
@@ -729,8 +753,9 @@ def _painel_sensibilidade(ax, e: Estagio, par: str) -> bool:
         if nominal is not None and not nominal.empty:  # um só estado equivale a λ = 0
             tau = nominal["kendall_tau"].iloc[0]
             ax.scatter(0.0, tau, facecolor="white", edgecolor="0.25", marker="D", s=30, zorder=5)
-            ax.annotate(f"apenas $\\theta_1$: {fmt(tau, 3)}", (0.0, tau), xytext=(8, -3), textcoords="offset points",
-                        va="top", fontsize=8, color="0.25")
+            # abaixo do marcador, longe da linha que começa em λ = 0,5
+            ax.annotate(f"apenas $\\theta_1$: {fmt(tau, 3)}", (0.0, tau), xytext=(-4, -9), textcoords="offset points",
+                        ha="left", va="top", fontsize=8, color="0.25")
             ticks = np.unique(np.r_[0.0, df["lambda"].to_numpy(dtype=float)])
             ax.set_xticks(ticks, [fmt(t, 1) for t in ticks])
             muda |= _marcar_mudanca(ax, [0.0], [tau], ~nominal["mesmo_d_star"].astype(bool))
@@ -870,7 +895,7 @@ def main(argv=None) -> None:
             plt.close("all")
             avisos.append(f"{nome}: PULADA — {exc}")
             continue
-        salvar(fig, args.out, nome, gerados)
+        salvar(fig, args.out, nome, gerados, RECORTE_SUPERIOR_TEX.get(nome, 0.0) if len(estagios) == 1 else 0.0)
 
     caminho_tab = args.out / "tabela_comparacao.csv"
     tabela_comparacao(estagios).to_csv(caminho_tab, index=False)

@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 resultados_*/
+figuras_*/
+.DS_Store
+# dados de terceiros (Nascimento et al., 2022) não são redistribuídos
+data/
+*.csv

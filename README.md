@@ -1,53 +1,48 @@
 # tg_robust — Seleção Robusta Pós-Pareto de Motores Sólidos
 
+Implementação computacional da metodologia do Trabalho de Graduação (TG) de
+Isabel Colares Brasil: seleção pós-Pareto de motores-foguete a propelente
+sólido combinando critérios de decisão sob incerteza estrita
+(**Wald**, **Savage**, **Hurwicz** — Estágio 1) com o **Processo Analítico em
+Rede (ANP)** (Estágio 2) e restrições de admissibilidade por perfil
+(fator de segurança e teto de custo), aplicada aos designs Pareto de
+Nascimento et al. (2022).
+
 Critérios (padrão): `Mp`, `tb`, `It`, `F`, `rhoIsp`, `eta`. `pcmax` não é critério:
 atua só no filtro de FS e no índice de custo. Os 7 atributos (com `pcmax`) continuam
 lidos e propagados pelos estados; `--criterios 7` volta a pontuar `pcmax` e
 `--criterios 5` usa os critérios do artigo (sem `pcmax` nem `eta`).
 
-Implementação computacional da metodologia do Capítulo 3 da TG
-(`../cap3_metodologia_revisado.tex`, fonte da verdade): seleção pós-Pareto de
-motores sólidos combinando critérios de decisão sob incerteza estrita
-(**Wald**, **Savage**, **Hurwicz** — Estágio 1) com o **Processo Analítico em
-Rede (ANP)** (Estágio 2), aplicada aos designs Pareto de
-Nascimento et al. (2022).
-
-Este pacote é independente do restante de `TG/` — nenhum arquivo existente
-(`tratamento_dados.py`, `ANP.ipynb`, `data/`, `resultados/`, capítulos, .bib)
-foi modificado, movido ou apagado. `tratamento_dados.py` é um **protótipo
-anterior**, com uma metodologia diferente (fatores de cenário aplicados
-diretamente a todas as métricas, pesos fixos por persona) — não é reutilizado
-aqui; a metodologia correta é a descrita no `.tex` e resumida abaixo.
-
 ## Instalação
 
+Python 3.11 ou superior.
+
 ```bash
-conda activate projects   # Python 3.11, numpy/scipy/pandas já instalados
-pip install pytest        # se ainda não instalado no ambiente
+git clone <url-do-repositorio> tg_robust
+cd tg_robust
+pip install -r requirements.txt
 ```
 
-Dependências: `numpy`, `scipy`, `pandas` (execução) e `pytest` (testes).
-Nenhuma outra dependência externa.
+Dependências: `numpy`, `scipy`, `pandas` (execução), `matplotlib` (figuras) e
+`pytest` (testes).
 
 ## Uso rápido
 
 ```bash
-cd tg_robust
+# dados sintéticos (não são dados do artigo; servem para testar a instalação)
 python run_pipeline.py --stage 1 --out resultados_estagio1 --seed 0
 python run_pipeline.py --stage 2 --out resultados_estagio2 --seed 0
 
-# dados reais do artigo (1º estágio, tabela do modeFRONTIER) e figuras do Cap. 4
-# (um painel por figura; --dados2/--resultados2 acrescentam o 2º estágio):
+# dados do artigo (1º estágio, tabela do modeFRONTIER — ver "Dados de entrada")
+# e figuras do Cap. 4 (um painel por figura; --dados2/--resultados2 acrescentam o 2º estágio):
 python run_pipeline.py --stage 1 \
-    --csv "../data/modeFrontier 1st Stage Us Propellants Designs Table.csv" --out resultados_estagio1
+    --csv "data/modeFrontier 1st Stage Us Propellants Designs Table.csv" --out resultados_estagio1
 python gerar_figuras_cap4.py \
-    --dados1 "../data/modeFrontier 1st Stage Us Propellants Designs Table.csv" \
+    --dados1 "data/modeFrontier 1st Stage Us Propellants Designs Table.csv" \
     --resultados1 resultados_estagio1 --out figuras_cap4
 
-# fronts de TESTE (gerador_pareto/, modelo simplificado — não usar no Cap. 4),
-# reexecutando a balística (habilita a varredura de λ):
-python run_pipeline.py --stage 2 --csv ../gerador_pareto/dados/pareto_estagio2.csv \
-    --balistica ../gerador_pareto/balistica.py --out resultados_teste2
+# com um simulador de balística interna próprio (habilita a varredura de λ):
+python run_pipeline.py --stage 2 --csv designs.csv --balistica simulador.py --out resultados_estagio2
 
 # opções das restrições de admissibilidade:
 #   --referencia-custo {mediana,minimo}   (padrão: mediana)
@@ -87,30 +82,39 @@ escolha do vencedor de cada perfil; `rho = inf` retira o teto de custo.
 
 Base do índice de custo: $p_{c,\max}(\theta_1)\,V_c$, com
 $V_c = M_p/(\rho_p\,\eta_v)$, quando os dados trazem `rho` e `eta` (tabela do
-modeFRONTIER); nos fronts de teste (sem `rho`), $p_{c,\max}(\theta_1)\,R_c^2 L_t$.
+modeFRONTIER); caso contrário, $p_{c,\max}(\theta_1)\,R_c^2 L_t$.
 
 O **vencedor de cada perfil** é o argmax de $g^{(p)}$ (sub-rede ANP do perfil,
 a mesma que entra na síntese de $d^*$) restrito a $\mathcal{F}^{(p)}$.
 $V^{(p)}$ (média simples dos critérios, pesos iguais) é mantido só como
 referência "sem interdependência", como no AHP original.
 
-## Onde plugar os dados reais
+## Dados de entrada
 
-Os arquivos `../data/pareto_estagio_*.csv` são da metodologia anterior e
-**não devem ser usados**. Os dados reais de Nascimento et al. (2022) precisam
-trazer, por design:
+Os designs Pareto de Nascimento et al. (2022) **não são distribuídos** neste
+repositório. Quem tiver acesso à tabela de designs do modeFRONTIER pode
+colocá-la em `data/` (pasta ignorada pelo git) e passá-la por `--csv`; o
+formato é reconhecido automaticamente e os estados θ são obtidos por leis de
+escala quase estacionárias (`scenarios.EscalaQuaseEstacionaria`).
+
+Outros conjuntos de designs são aceitos se trouxerem, por design:
 
 1. os 7 atributos por estado, em colunas `<criterio>_theta{1,2,3}`
-   (`tb`, `It`, `F`, `rho_isp`, `pcmax`) mais `Mp` e `eta_v` — mesmo
-   formato de `../gerador_pareto/dados/` —, **ou** só os valores nominais e um
-   modelo de balística (`--balistica`) para calcular os estados;
+   (`tb`, `It`, `F`, `rho_isp`, `pcmax`) mais `Mp` e `eta_v`, **ou** só os
+   valores nominais e um modelo de balística (`--balistica`) para calcular os
+   estados;
 2. `Rc` e `Lt` (raio e comprimento do grão; a unidade se cancela no índice de
    custo) — sem eles, `load_designs` recusa o arquivo;
 3. `propelente` (tipo 1-4) ou `nexp`.
 
 `pc_med` (pressão média) **não** é aceito no lugar de `pcmax`.
 
-## Onde plugar o modelo real de balística interna
+> do Nascimento, L. G. M.; Araújo, L. M.; Fernandes, S. S.; Shimote, W. K.;
+> Rapozo, R. R. *Hybrid optimization algorithm for preliminary design of
+> multistage launch vehicles.* Journal of the Brazilian Society of Mechanical
+> Sciences and Engineering, v. 44, p. 103, 2022.
+
+## Modelo de balística interna
 
 `tg_robust/scenarios.py` define a interface `BallisticModel`:
 
@@ -122,20 +126,18 @@ class BallisticModel(Protocol):
 
 Implemente uma classe com essa assinatura (recalculando a curva de empuxo
 por inteiro a partir de $c^{*}_j = \kappa_{c^{*},j} c^{*}$ e
-$C_{F,j} = \kappa_{C_F,j} C_F$, conforme a Seção "Definição dos Estados da
-Natureza" do `.tex`) e passe-a ao pipeline:
+$C_{F,j} = \kappa_{C_F,j} C_F$) e passe-a ao pipeline:
 
 ```python
 resultado = pipeline.run(cfg, designs, model=ModeloRealDeBalistica())
 ```
 
-Um simulador por design no formato `simular(x, k_cstar, k_cf) -> dict` (como
-`../gerador_pareto/balistica.py`) é adaptado por `scenarios.AdaptadorSimulador`
-(`--balistica arquivo.py` no CLI). Se os estados vêm prontos no CSV e nenhum
-modelo é fornecido, usa-se `scenarios.EstadosPrecomputados` e a varredura de λ
-é pulada com aviso. Sem CSV por estado nem modelo, o pipeline usa
-`SurrogateBallistics`, que aplica as identidades analíticas da Seção 3.3.1 —
-o "FALLBACK" mencionado no `.tex`.
+Um simulador por design no formato `simular(x, k_cstar, k_cf) -> dict` é
+adaptado por `scenarios.AdaptadorSimulador` (`--balistica arquivo.py` no CLI).
+Se os estados vêm prontos no CSV e nenhum modelo é fornecido, usa-se
+`scenarios.EstadosPrecomputados` e a varredura de λ é pulada com aviso. Sem
+CSV por estado nem modelo, o pipeline usa `SurrogateBallistics`, que aplica as
+identidades analíticas da Seção 3.3.1.
 
 ## Julgamentos de $W_{TT}$
 
@@ -149,29 +151,24 @@ $g = -((FS_{ef} - FS_p)/FS_p)^2$, com $FS_{ef} = p_{lim}/p_{c,max}(\theta_1)$. M
 de perfil para perfil, por isso fica fora do tensor comum: é a última coluna de
 $v^{(p)}$, normalizada por perfil, com auto-laço em $W_{TT}$.
 
-## Regressão contra a versão anterior às restrições
-
-`tests/test_regressao.py` compara, com FS = 1 e ρ = ∞, os resultados atuais com
-os da versão anterior (igualdade exata). Aponte a variável `TG_ROBUST_ANTES`
-para a raiz dessa versão: `TG_ROBUST_ANTES=/caminho/tg_robust_antes python -m pytest tests/test_regressao.py`.
-
 ## Arquitetura
 
 ```
 tg_robust/
   tg_robust/
-    config.py       # Config (dataclass imutável) + constantes dos critérios/requisitos
-    data.py         # load_designs, synthetic_designs, validação de restrições
-    scenarios.py    # BallisticModel (interface) + SurrogateBallistics + propagate_states
-    stage1.py       # benefício, normalização comum/por-estado, Wald/Savage/Hurwicz
-    judgments.py    # Saaty: from_intensities, consistência (CR), perturb, W_TT validada
-    anp.py          # W_AT, limite fechado (solve), limite por potências (verificação), síntese
+    config.py        # Config (dataclass imutável) + constantes dos critérios/requisitos
+    data.py          # load_designs, synthetic_designs, validação de restrições
+    scenarios.py     # BallisticModel (interface) + modelos de estados + propagate_states
+    stage1.py        # benefício, normalização comum/por-estado, Wald/Savage/Hurwicz
+    judgments.py     # Saaty: from_intensities, consistência (CR), perturb, W_TT validada
+    anp.py           # W_AT, limite fechado (solve), limite por potências (verificação), síntese
     pipeline.py      # run(cfg, designs, model) -> Result
-    baseline.py     # AHP de pesos iguais (aproximação, 5 objetivos, estado nominal)
+    baseline.py      # AHP de pesos iguais (aproximação, 5 objetivos, estado nominal)
     admissibility.py # restrições por perfil (FS, teto de custo), F^(p) e resumo
-    sensitivity.py  # 5 varreduras (alpha, pi, ANP/gamma, lambda, restrições) + estabilidade
-  run_pipeline.py   # CLI
-  tests/            # pytest (69 testes + 1 xfail)
+    sensitivity.py   # varreduras de sensibilidade + estabilidade
+  run_pipeline.py        # CLI
+  gerar_figuras_cap4.py  # figuras do Cap. 4 a partir das saídas do CLI
+  tests/                 # pytest
 ```
 
 Sem estado global mutável; qualquer variação de parâmetro cria uma nova
@@ -181,29 +178,21 @@ Sem estado global mutável; qualquer variação de parâmetro cria uma nova
 ## Testes
 
 ```bash
-cd tg_robust
 python -m pytest -q
 ```
 
 Cobertura: identidades de propagação, normalização comum vs. por-estado,
 Wald/Savage/Hurwicz (casos-limite e invariância), consistência e
 perturbação de Saaty, limite fechado vs. por potências (`atol=1e-9`),
-síntese por mistura, reprodutibilidade, e o CLI ponta a ponta com $n=632$
-e $n=1089$ designs sintéticos (ambos em menos de 2s).
+síntese por mistura, restrições de admissibilidade, reprodutibilidade, e o
+CLI ponta a ponta com designs sintéticos. Testes que dependem dos dados do
+artigo ou de fronts de teste externos são pulados quando esses arquivos não
+estão disponíveis.
 
-## Decisões em aberto (dependem do autor e/ou do orientador)
+`tests/test_regressao.py` compara, com FS = 1 e ρ = ∞, os resultados atuais com
+os de uma versão anterior às restrições (igualdade exata). Só roda se a
+variável `TG_ROBUST_ANTES` apontar para a raiz dessa versão.
 
-Ver a lista completa na mensagem final da sessão em que este pacote foi
-criado. Resumo:
+## Licença
 
-1. **Dados reais** — os CSVs de `../data/` parecem ser dados de
-   desenvolvimento do protótipo antigo (violam `eta>=0,8` massivamente), não
-   o *front* de Pareto validado do artigo. Os dados reais de
-   Nascimento et al. (2022) ainda precisam ser obtidos/confirmados.
-2. **Scripts de balística interna** do orientador — opcional; na ausência,
-   usa-se `SurrogateBallistics` (identidades analíticas).
-3. **$\alpha$ de Hurwicz** (referência 0,8) — confirmar a postura de risco do
-   perfil *New Space* adotada.
-4. **Margens de $c^{*}$ e $C_F$** — valores de $\kappa$ (Tabela "cenarios")
-   vêm diretamente do texto do artigo reportado no `.tex`; confirmar se são
-   as margens finais a usar.
+MIT — ver [LICENSE](LICENSE).

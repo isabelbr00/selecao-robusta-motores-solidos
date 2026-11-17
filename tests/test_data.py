@@ -149,7 +149,9 @@ def test_hash_arquivo_deterministico(tmp_path):
 
 
 # ─── Tabela do modeFRONTIER (Nascimento et al., 2022) ────────────────────
-CSV_REAL_1 = Path(__file__).resolve().parents[2] / "data" / "modeFrontier 1st Stage Us Propellants Designs Table.csv"
+# a tabela não é distribuída: procurada em data/ do repositório ou em ../data/
+_NOME_CSV_REAL_1 = "modeFrontier 1st Stage Us Propellants Designs Table.csv"
+CSV_REAL_1 = next((d / "data" / _NOME_CSV_REAL_1 for d in Path(__file__).resolve().parents[1:3] if (d / "data" / _NOME_CSV_REAL_1).exists()), Path("ausente"))
 
 
 def _linha_modefrontier(Id, categoria="Pareto", E="false", Ea=10.0, **kw):

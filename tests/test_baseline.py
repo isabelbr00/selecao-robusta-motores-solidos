@@ -15,7 +15,9 @@ def test_ahp_baseline_retorna_ranking_valido():
 
 
 # ─── Validação contra Nascimento et al. (2022), 1º estágio ────────────────
-CSV_REAL_1 = Path(__file__).resolve().parents[2] / "data" / "modeFrontier 1st Stage Us Propellants Designs Table.csv"
+# a tabela não é distribuída: procurada em data/ do repositório ou em ../data/
+_NOME_CSV_REAL_1 = "modeFrontier 1st Stage Us Propellants Designs Table.csv"
+CSV_REAL_1 = next((d / "data" / _NOME_CSV_REAL_1 for d in Path(__file__).resolve().parents[1:3] if (d / "data" / _NOME_CSV_REAL_1).exists()), Path("ausente"))
 requer_dados_reais = pytest.mark.skipif(not CSV_REAL_1.exists(), reason="tabela real do 1º estágio não disponível")
 ID_AHP_ARTIGO = 5763  # design escolhido pelo AHP do artigo (Tabela 7)
 
